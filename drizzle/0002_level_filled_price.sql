@@ -1,0 +1,1 @@
+ALTER TABLE "plan_levels" ADD COLUMN "filled_price" integer;

@@ -1,0 +1,160 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --line: #e3e6eb;
+  --text: #14171c;
+  --muted: #646c78;
+  --primary: #2453d6;
+  --primary-fg: #ffffff;
+  --primary-soft: #e8eefc;
+  --up: #0f8a4a;
+  --up-soft: #e3f5ea;
+  --down: #d13438;
+  --down-soft: #fcebeb;
+  --warn: #a35d00;
+  --warn-soft: #fff3e0;
+  --ring: #2453d64d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116;
+    --surface: #171b22;
+    --surface-2: #1f242d;
+    --line: #2a303b;
+    --text: #e8ebf0;
+    --muted: #9aa3b0;
+    --primary: #6d93ff;
+    --primary-fg: #0b1020;
+    --primary-soft: #1e2a4a;
+    --up: #3ecf7f;
+    --up-soft: #15301f;
+    --down: #ff6b6b;
+    --down-soft: #3a1b1d;
+    --warn: #ffb74d;
+    --warn-soft: #3a2a12;
+    --ring: #6d93ff55;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-fg: var(--text);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-up: var(--up);
+  --color-up-soft: var(--up-soft);
+  --color-down: var(--down);
+  --color-down-soft: var(--down-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --font-sans: var(--font-app), ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  color-scheme: light dark;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Số liệu căn đều cột */
+@utility num {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility field {
+  @apply w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-base text-fg outline-none transition placeholder:text-muted/70 focus:border-primary focus:ring-4 focus:ring-(--ring) disabled:opacity-60;
+}
+
+@utility label {
+  @apply mb-1.5 block text-sm font-medium text-fg;
+}
+
+@utility hint {
+  @apply mt-1 text-xs text-muted;
+}
+
+@utility btn {
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition select-none active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60;
+}
+@utility btn-primary {
+  @apply btn bg-primary text-primary-fg hover:brightness-110;
+}
+@utility btn-secondary {
+  @apply btn border border-line bg-surface text-fg hover:bg-surface-2;
+}
+@utility btn-ghost {
+  @apply btn text-muted hover:bg-surface-2 hover:text-fg;
+}
+@utility btn-danger {
+  @apply btn border border-line bg-surface text-down hover:bg-down-soft;
+}
+@utility btn-sm {
+  @apply min-h-9 rounded-lg px-3 text-xs;
+}
+
+@utility card {
+  @apply rounded-2xl border border-line bg-surface;
+}
+
+@utility chip {
+  @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+}
+
+@utility pb-safe {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+}
+
+/* Tailwind v4 để con trỏ mặc định cho button: trả lại dạng bàn tay cho mọi thứ bấm được */
+button:not(:disabled),
+[role="button"],
+[role="radio"],
+summary,
+label:has(> input[type="radio"]) {
+  cursor: pointer;
+}
+
+/* Viền focus rõ ràng khi dùng bàn phím */
+:where(a, button, summary, [role="radio"], input, textarea, select):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.field:focus-visible {
+  outline: none;
+}
+
+/* Tôn trọng cài đặt giảm chuyển động của hệ điều hành */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Ô nhập đang có lỗi */
+.field[aria-invalid="true"] {
+  border-color: var(--down);
+}
+.field[aria-invalid="true"]:focus {
+  --tw-ring-color: color-mix(in srgb, var(--down) 30%, transparent);
+}
