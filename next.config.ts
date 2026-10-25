@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
   // PGlite chỉ dùng khi chạy local, không bundle vào server
   serverExternalPackages: ["@electric-sql/pglite"],
   cacheComponents: true,
+  experimental: {
+    // Chuyển qua lại giữa các trang trong 5 phút thì dùng lại dữ liệu đã tải, không gọi server.
+    // Giá do cron cập nhật ngầm; ghi lệnh, sửa kế hoạch, cập nhật giá đều gọi revalidatePath nên vẫn thấy ngay.
+    staleTimes: { dynamic: 300 },
+  },
   partialPrefetching: true,
   turbopack: {
     rules: {

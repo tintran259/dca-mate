@@ -6,7 +6,7 @@ import { PositionCard, levelLabel } from "@/components/position-card";
 import { RefreshPricesButton } from "@/components/position-forms";
 import { EmptyState, Notice, PageHeader, PageSkeleton, Skeleton, Stat, cn } from "@/components/ui";
 import { countNewAlerts, getClosedPositions, getOpenPositions, getPortfolioHistory } from "@/lib/data";
-import { formatDateTime, formatMoney, formatPct, formatPrice, formatQty, trendClass } from "@/lib/format";
+import { formatDateTime, formatMoney, formatPct, formatPrice, trendClass } from "@/lib/format";
 import { tpPlanSummary } from "@/lib/plan-summary";
 import { FeeRatesProvider } from "@/components/fee-rates";
 import { getFeeRates } from "@/lib/fees";
@@ -159,60 +159,6 @@ async function Dashboard() {
               </li>
             ))}
           </ul>
-        </section>
-      )}
-
-      {withPlan.length > 0 && (
-        <section className="card p-4 md:p-5" aria-labelledby="tp-plan-title">
-          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <div>
-              <h2 id="tp-plan-title" className="text-base font-semibold">
-                Chốt lời theo kế hoạch
-              </h2>
-              <p className="mt-0.5 text-sm text-muted">Nếu các nấc chốt lời còn chờ khớp đúng kế hoạch</p>
-            </div>
-            <p className="text-sm">
-              <span className="text-muted">Tổng: </span>
-              <span className={cn("num font-semibold", trendClass(planned))}>{formatMoney(planned)}</span>
-            </p>
-          </div>
-          <ul className="divide-y divide-line">
-            {withPlan.map(({ view, plan }) => (
-              <li key={view.position.id}>
-                <Link href={`/positions/${view.position.id}`} className="flex items-start gap-3 py-2.5 hover:opacity-80">
-                  <span className="w-14 shrink-0 font-bold">{view.position.symbol}</span>
-                  <span className="min-w-0 flex-1 text-sm">
-                    <span className="block">
-                      {plan.steps} nấc · bán {formatQty(plan.sellQuantity)} cp
-                      {plan.remainingAfter > 0 ? (
-                        <span className="text-muted">, còn giữ {formatQty(plan.remainingAfter)} cp</span>
-                      ) : (
-                        <span className="text-muted">, bán hết</span>
-                      )}
-                    </span>
-                    <span className="num block text-xs text-muted">
-                      Tạm tính hiện tại{" "}
-                      <span className={trendClass(view.pnl)}>{formatMoney(view.pnl)}</span>
-                      {plan.next && (
-                        <>
-                          {" "}· nấc tiếp ≥ {formatPrice(plan.next.trigger)}
-                          {plan.next.distancePct != null && ` (còn ${formatPct(plan.next.distancePct)})`}
-                        </>
-                      )}
-                    </span>
-                  </span>
-                  <span className="num text-right text-sm">
-                    <span className={cn("block font-semibold", trendClass(plan.plannedProfit))}>{formatMoney(plan.plannedProfit)}</span>
-                    <span className={cn("block text-xs", trendClass(plan.plannedProfit))}>{formatPct(plan.plannedPct)}</span>
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <p className="hint mt-2">
-            Tính theo số cổ và giá vốn hiện tại, đã trừ phí và thuế bán. Khớp thêm nấc DCA thì giá vốn đổi, con số này đổi theo.
-            Phần còn giữ sau nấc cuối chưa tính.
-          </p>
         </section>
       )}
 

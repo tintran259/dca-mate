@@ -1,6 +1,7 @@
 import "server-only";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { connection } from "next/server";
+import { cache } from "react";
 import { getDb } from "@/db";
 import {
   alerts,
@@ -115,17 +116,24 @@ function buildView(position: Position, txs: Transaction[], levels: PlanLevel[], 
   };
 }
 
-async function loadViews(where?: ReturnType<typeof eq>): Promise<PositionView[]> {
+// Vị thế, lệnh, nấc của cả danh mục: đọc 1 lần mỗi request (cache của React), dùng chung cho danh sách
+// đang giữ, đã đóng và biểu đồ. Ngoài lúc render (cron, server action) thì mỗi lần gọi đều đọc mới.
+const loadPortfolio = cache(async () => {
   await connection();
   const db = await getDb();
-  const rows = await db.select().from(positions).where(where).orderBy(positions.symbol);
-  if (rows.length === 0) return [];
+  const rows = await db.select().from(positions).orderBy(positions.symbol);
   const ids = rows.map((p) => p.id);
-  const [txs, levels, fees] = await Promise.all([
-    db.select().from(transactions).where(inArray(transactions.positionId, ids)),
-    db.select().from(planLevels).where(inArray(planLevels.positionId, ids)),
-    getFeeRates(),
-  ]);
+  const [txs, levels] = ids.length
+    ? await Promise.all([
+        db.select().from(transactions).where(inArray(transactions.positionId, ids)),
+        db.select().from(planLevels).where(inArray(planLevels.positionId, ids)),
+      ])
+    : [[], []];
+  return { rows, txs, levels };
+});
+
+const loadAllViews = cache(async (): Promise<PositionView[]> => {
+  const [{ rows, txs, levels }, fees] = await Promise.all([loadPortfolio(), getFeeRates()]);
   return rows.map((p) =>
     buildView(
       p,
@@ -134,14 +142,14 @@ async function loadViews(where?: ReturnType<typeof eq>): Promise<PositionView[]>
       fees,
     ),
   );
-}
+});
 
-export function getOpenPositions() {
-  return loadViews(eq(positions.status, "open"));
+export async function getOpenPositions() {
+  return (await loadAllViews()).filter((v) => v.position.status === "open");
 }
 
 export async function getClosedPositions() {
-  return loadViews(eq(positions.status, "closed"));
+  return (await loadAllViews()).filter((v) => v.position.status === "closed");
 }
 
 export type PositionDetail = PositionView & {
@@ -190,7 +198,8 @@ export async function getAlerts(status?: Alert["status"]): Promise<AlertRow[]> {
   return rows.map((r) => ({ ...r.alert, symbol: r.symbol }));
 }
 
-export async function countNewAlerts(): Promise<number> {
+/** Số cảnh báo chưa xử lý. Layout (chấm đỏ, số trên menu) và trang dùng chung 1 lần đọc mỗi request */
+export const countNewAlerts = cache(async (): Promise<number> => {
   await connection();
   const db = await getDb();
   const [row] = await db
@@ -198,7 +207,7 @@ export async function countNewAlerts(): Promise<number> {
     .from(alerts)
     .where(and(eq(alerts.status, "new")));
   return row?.n ?? 0;
-}
+});
 
 export type PortfolioHistory = {
   points: PortfolioPoint[];
@@ -214,12 +223,10 @@ export type PortfolioHistory = {
 
 /** Giá trị danh mục và giá các mã theo ngày cho biểu đồ ở trang tổng quan. */
 export async function getPortfolioHistory(): Promise<PortfolioHistory> {
-  await connection();
-  const db = await getDb();
-  const [rows, txs] = await Promise.all([
-    db.select().from(positions).orderBy(positions.id),
-    db.select().from(transactions),
-  ]);
+  const portfolio = await loadPortfolio();
+  // Màu trên biểu đồ gắn theo thứ tự tạo mã (id), không theo tên mã như danh sách
+  const rows = [...portfolio.rows].sort((a, b) => a.id - b.id);
+  const txs = portfolio.txs;
   const list = rows.map((p) => ({
     symbol: p.symbol,
     status: p.status,

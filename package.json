@@ -11,6 +11,7 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
+    "db:copy": "tsx scripts/copy-db.ts",
     "test:e2e": "node e2e/run.mjs",
     "test:telegram": "TELEGRAM_LIVE=1 vitest run src/lib/notify.test.ts -t \"gửi thật\""
   },

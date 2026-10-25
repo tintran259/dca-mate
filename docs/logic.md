@@ -197,4 +197,10 @@ Theo thứ tự đã làm:
 
 - `tpPlanSummary` (`src/lib/plan-summary.ts`): cộng tiền lời của các nấc chốt lời còn chờ (chưa làm, chưa bỏ qua), mỗi nấc = (giá nấc × (1 − phí bán − thuế) − giá vốn TB) × số cổ bán ở nấc đó. Dùng đúng chuỗi chốt lời hiển thị ở trang chi tiết.
 - Tính theo số cổ và giá vốn hiện tại. Khớp thêm nấc DCA thì giá vốn đổi, con số đổi theo. Kế hoạch không bán hết thì phần còn giữ sau nấc cuối không tính.
-- Tổng quan: ô "Lãi theo kế hoạch" (tổng + % vốn) và khối "Chốt lời theo kế hoạch" theo từng mã (số nấc, số cổ bán, còn giữ, lãi/lỗ tạm tính hiện tại, nấc tiếp theo). Trang chi tiết: ô "Lãi theo kế hoạch".
+- Tổng quan: ô "Lãi theo kế hoạch" (tổng + % vốn) trong phần tóm tắt. Trang chi tiết: ô "Lãi theo kế hoạch".
+
+## Tối ưu tải trang
+
+- Cache phía trình duyệt khi chuyển trang (`experimental.staleTimes.dynamic = 300` trong `next.config.ts`): trong 5 phút, qua lại giữa các trang đã ghé thì hiện ngay, không gọi server. Ghi lệnh, sửa kế hoạch, nhập giá tay, "Cập nhật giá" đều gọi `revalidatePath` nên dữ liệu mới hiện ngay sau khi sửa. Giá do cron cập nhật ngầm hiện khi tải lại trang hoặc sau 5 phút. Chỉ đúng với bản build (`next build`/Vercel); `next dev` vẫn gọi lại trang mở đầu tiên.
+- Mỗi request chỉ đọc mỗi bảng 1 lần (`cache()` của React): vị thế, lệnh, nấc đọc chung cho danh sách đang giữ, đã đóng và biểu đồ; số cảnh báo và tỷ lệ phí đọc 1 lần cho cả layout và trang. Tổng quan từ 11 xuống 5 câu SQL, Chi tiết từ 7 xuống 6.
+- Database Neon đặt ở Singapore, cùng region với Vercel (`sin1`). Đổi database: `SOURCE_DATABASE_URL=... TARGET_DATABASE_URL=... npm run db:copy` (có `--dry-run`), chỉ đọc database cũ, database mới phải trống.
