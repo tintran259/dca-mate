@@ -204,3 +204,10 @@ Theo thứ tự đã làm:
 - Cache phía trình duyệt khi chuyển trang (`experimental.staleTimes.dynamic = 300` trong `next.config.ts`): trong 5 phút, qua lại giữa các trang đã ghé thì hiện ngay, không gọi server. Ghi lệnh, sửa kế hoạch, nhập giá tay, "Cập nhật giá" đều gọi `revalidatePath` nên dữ liệu mới hiện ngay sau khi sửa. Giá do cron cập nhật ngầm hiện khi tải lại trang hoặc sau 5 phút. Chỉ đúng với bản build (`next build`/Vercel); `next dev` vẫn gọi lại trang mở đầu tiên.
 - Mỗi request chỉ đọc mỗi bảng 1 lần (`cache()` của React): vị thế, lệnh, nấc đọc chung cho danh sách đang giữ, đã đóng và biểu đồ; số cảnh báo và tỷ lệ phí đọc 1 lần cho cả layout và trang. Tổng quan từ 11 xuống 5 câu SQL, Chi tiết từ 7 xuống 6.
 - Database Neon đặt ở Singapore, cùng region với Vercel (`sin1`). Đổi database: `SOURCE_DATABASE_URL=... TARGET_DATABASE_URL=... npm run db:copy` (có `--dry-run`), chỉ đọc database cũ, database mới phải trống.
+
+## Chọn ngày, popup trên điện thoại
+
+- Ô ngày dùng lịch shadcn (Calendar trong Popover, `react-day-picker`): hiện dd/mm/yyyy, tuần bắt đầu thứ Hai, tiếng Việt, không chọn được ngày tương lai, gửi lên server dạng YYYY-MM-DD qua ô ẩn cùng tên.
+- Lịch nằm trong bottom sheet thì popover gắn vào sheet (`container`), nếu gắn vào `<body>` sẽ bị che vì sheet ở lớp trên cùng. Sheet trượt bằng thuộc tính `translate` (lúc nghỉ là none) để không cắt popover.
+- Trong popover, `--muted` được đổi thành nền xám nhạt vì shadcn dùng `bg-muted` làm nền, còn app dùng `--muted` làm màu chữ.
+- Mở sheet, menu ☰ thì focus vào chính khung (không phải nút ✕), nên không hiện viền trên nút đóng.

@@ -76,7 +76,11 @@ export function MobileMenuView({
         className="btn-ghost relative size-10 min-h-10 p-0"
         aria-label="Mở menu"
         aria-haspopup="dialog"
-        onClick={() => ref.current?.showModal()}
+        onClick={() => {
+          ref.current?.showModal();
+          // Không để trình duyệt tự focus (và hiện viền) nút đóng menu
+          ref.current?.focus();
+        }}
       >
         <MenuIcon size={22} />
         {/* Chấm đỏ khi có cảnh báo mới, vì menu đang đóng thì không thấy số cảnh báo */}
@@ -85,6 +89,7 @@ export function MobileMenuView({
       <dialog
         ref={ref}
         aria-label="Menu"
+        tabIndex={-1}
         className="drawer"
         onClick={(e) => e.target === e.currentTarget && e.currentTarget.close()}
       >

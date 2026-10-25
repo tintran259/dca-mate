@@ -296,18 +296,21 @@ label:has(> input[type="radio"]) {
     border-radius: 1.25rem 1.25rem 0 0;
     background: var(--surface);
     padding-bottom: env(safe-area-inset-bottom);
-    transform: translateY(0);
+    /* Trượt bằng thuộc tính translate, lúc nghỉ là none: còn transform/translate khác none thì sheet thành khung
+       chứa của phần tử position: fixed bên trong (VD lịch chọn ngày) và cắt chúng theo vùng cuộn.
+       Không dùng transform: none vì bộ biên dịch CSS đổi nó thành translateY(0) */
+    translate: none;
     transition:
-      transform 500ms var(--ease-drawer),
+      translate 500ms var(--ease-drawer),
       overlay 500ms var(--ease-drawer) allow-discrete,
       display 500ms var(--ease-drawer) allow-discrete;
   }
   .sheet:not([open]) {
-    transform: translateY(100%);
+    translate: 0 100%;
   }
   @starting-style {
     .sheet[open] {
-      transform: translateY(100%);
+      translate: 0 100%;
     }
   }
   /* Nút lưu của form dài dính ở đáy sheet, không phải cuộn xuống cuối mới bấm được */
@@ -377,6 +380,18 @@ label:has(> input[type="radio"]) {
   }
 }
 
+/* shadcn dùng bg-muted làm nền xám nhạt (ô hôm nay, nền khi rê chuột), còn --muted của app là màu chữ xám đậm.
+   Trong popover (lịch chọn ngày) đổi --muted thành nền nhạt; chữ xám bên trong dùng --muted-foreground nên không đổi. */
+[data-slot="popover-content"] {
+  --muted: var(--surface-2);
+}
+
+/* Sheet, menu nhận focus khi mở để trình đọc màn hình đọc tiêu đề; không cần viền vì cả khung đã nổi lên */
+.sheet:focus,
+.drawer:focus {
+  outline: none;
+}
+
 /* Thông báo kết quả sau khi bấm (Notice): hiện ra nhẹ để người dùng thấy app đã nhận lệnh */
 .notice-in {
   transition:
@@ -404,6 +419,7 @@ label:has(> input[type="radio"]) {
   .drawer:not([open]),
   .notice-in {
     transform: none !important;
+    translate: none !important;
   }
   .drawer {
     transition-property: opacity, overlay, display;
@@ -426,6 +442,7 @@ label:has(> input[type="radio"]) {
     .sheet[open],
     .drawer[open] {
       transform: none;
+      translate: none;
       opacity: 0;
     }
   }

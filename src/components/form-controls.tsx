@@ -17,7 +17,11 @@ import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/app/actions";
 import { todayVN } from "@/lib/format";
 import { formatIntInput } from "@/lib/parse";
+import { CalendarIcon } from "lucide-react";
+import { vi } from "react-day-picker/locale";
 import { ChevronDownIcon, XIcon } from "./icons";
+import { Calendar } from "./ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "./ui";
 
 /**
@@ -252,19 +256,63 @@ export function Segmented<T extends string>({
 
 const noopSubscribe = () => () => {};
 
-/** Ô chọn ngày, mặc định là hôm nay (giờ VN). Ngày được lấy ở client để trang vẫn prerender được. */
-export function DateInput({ className, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "value" | "defaultValue">) {
+/** "2026-10-25" ↔ Date theo giờ máy (chỉ dùng phần ngày, không lệch múi giờ) */
+const parseYmd = (ymd: string) => {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
+const toYmd = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const dayLabel = new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+/**
+ * Chọn ngày bằng lịch (shadcn Calendar trong Popover), mặc định hôm nay theo giờ VN, không cho chọn ngày tương lai.
+ * Gửi lên server qua ô ẩn `name` dạng YYYY-MM-DD. Ngày hôm nay lấy ở client để trang vẫn prerender được.
+ */
+export function DateInput({ id, name, className }: { id?: string; name: string; required?: boolean; className?: string }) {
   const today = useSyncExternalStore(noopSubscribe, todayVN, () => "");
   const [value, setValue] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // Nằm trong bottom sheet (<dialog> ở lớp trên cùng) thì popover phải gắn vào dialog, gắn vào <body> sẽ bị che
+  const [container, setContainer] = useState<HTMLElement | null>(null);
+  useEffect(() => setContainer(triggerRef.current?.closest("dialog") ?? null), []);
+
+  const current = value ?? today;
+  const selected = current ? parseYmd(current) : undefined;
   return (
-    <input
-      {...props}
-      type="date"
-      className={cn("field", className)}
-      value={value ?? today}
-      max={today || undefined}
-      onChange={(e) => setValue(e.target.value)}
-    />
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          ref={triggerRef}
+          id={id}
+          type="button"
+          className={cn("field flex items-center justify-between gap-2 text-left", className)}
+        >
+          <span className="num">{selected ? dayLabel.format(selected) : "Chọn ngày"}</span>
+          <CalendarIcon size={18} className="shrink-0 text-muted" aria-hidden />
+        </button>
+      </PopoverTrigger>
+      <input type="hidden" name={name} value={current} />
+      <PopoverContent container={container} align="start" className="w-auto p-1">
+        <Calendar
+          mode="single"
+          locale={vi}
+          weekStartsOn={1}
+          selected={selected}
+          defaultMonth={selected}
+          disabled={today ? { after: parseYmd(today) } : undefined}
+          onSelect={(date) => {
+            if (!date) return;
+            setValue(toYmd(date));
+            setOpen(false);
+            triggerRef.current?.focus();
+          }}
+          // Ô ngày 36px cho dễ bấm trên điện thoại
+          className="[--cell-size:--spacing(9)]"
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -369,6 +417,8 @@ export function Sheet({
     <dialog
       ref={ref}
       id={id}
+      // Nhận focus khi mở (thay vì nút đóng), xem openSheet
+      tabIndex={-1}
       // Nằm trong trang (desktop, hoặc chưa mở) là một vùng nội dung; chỉ là popup khi mở thành sheet
       role="region"
       aria-labelledby={`${id}-title`}
@@ -411,6 +461,8 @@ function openSheet(dialog: HTMLDialogElement) {
   dialog.querySelector("details")?.setAttribute("open", "");
   dialog.setAttribute("role", "dialog");
   dialog.showModal();
+  // Trình duyệt tự focus nút ✕ (phần tử bấm được đầu tiên) và hiện viền: chuyển focus về chính sheet
+  dialog.focus();
 }
 
 /** Mở <Sheet> có id tương ứng (chỉ dùng trên điện thoại; desktop đã hiện sẵn trong trang). */
