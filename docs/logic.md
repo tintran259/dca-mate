@@ -192,3 +192,9 @@ Theo thứ tự đã làm:
 - Mọi hàm tính có dùng phí (`breakEvenPrice`, `unrealizedPnl`, `tpChain`, `simulateDca`, `planHints`, `evaluatePrice`, `buyFee`, `sellFee`, `sellTax`) nhận tỷ lệ phí làm tham số bắt buộc. Server đọc từ database (`getFeeRates`), trình duyệt nhận qua `FeeRatesProvider`, nên form và server luôn tính giống nhau.
 - Giá vốn và lãi đã chốt dùng số phí đã ghi trong từng lệnh, nên đổi tỷ lệ không làm đổi lệnh cũ.
 - VPS và các công ty chứng khoán không có API công khai trả về biểu phí; phí còn tùy gói của từng tài khoản. Vì vậy phí do người dùng nhập, có ô tính % từ một lệnh đã khớp.
+
+## Lãi theo kế hoạch chốt lời
+
+- `tpPlanSummary` (`src/lib/plan-summary.ts`): cộng tiền lời của các nấc chốt lời còn chờ (chưa làm, chưa bỏ qua), mỗi nấc = (giá nấc × (1 − phí bán − thuế) − giá vốn TB) × số cổ bán ở nấc đó. Dùng đúng chuỗi chốt lời hiển thị ở trang chi tiết.
+- Tính theo số cổ và giá vốn hiện tại. Khớp thêm nấc DCA thì giá vốn đổi, con số đổi theo. Kế hoạch không bán hết thì phần còn giữ sau nấc cuối không tính.
+- Tổng quan: ô "Lãi theo kế hoạch" (tổng + % vốn) và khối "Chốt lời theo kế hoạch" theo từng mã (số nấc, số cổ bán, còn giữ, lãi/lỗ tạm tính hiện tại, nấc tiếp theo). Trang chi tiết: ô "Lãi theo kế hoạch".

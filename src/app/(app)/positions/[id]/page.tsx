@@ -15,6 +15,7 @@ import { FeeRatesProvider } from "@/components/fee-rates";
 import { PriceLadder } from "@/components/price-ladder";
 import { Chip, Notice, PageSkeleton, Section, Stat, cn } from "@/components/ui";
 import { getPositionDetail } from "@/lib/data";
+import { tpPlanSummary } from "@/lib/plan-summary";
 import {
   daysBetween,
   formatDate,
@@ -47,6 +48,7 @@ async function PositionDetailView({ params, searchParams }: PageProps<"/position
   if (!detail) notFound();
 
   const { position, holding } = detail;
+  const plan = tpPlanSummary(holding, detail.levels);
   const price = position.lastPrice;
 
   // Số thứ tự nấc theo loại (đúng thứ tự chuỗi) và nhãn cho lịch sử lệnh
@@ -118,7 +120,7 @@ async function PositionDetailView({ params, searchParams }: PageProps<"/position
         </OpenSheetButton>
       </div>
 
-      <section className="card mb-4 grid grid-cols-2 gap-4 p-4 sm:grid-cols-4 md:p-5" aria-label="Chỉ số vị thế">
+      <section className="card mb-4 grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 md:p-5 lg:grid-cols-5" aria-label="Chỉ số vị thế">
         <Stat label="Đang giữ" value={`${formatQty(holding.quantity)} cp`} sub={<span className="text-muted">{holding.buyCount} lần mua</span>} />
         <Stat label="Giá vốn TB" value={formatPrice(holding.avgCost)} sub={<span className="text-muted">Hòa vốn {formatPrice(detail.breakEven)}</span>} />
         <Stat
@@ -129,6 +131,24 @@ async function PositionDetailView({ params, searchParams }: PageProps<"/position
           label="Thời gian giữ"
           value={!holding.firstBuyDate ? "—" : daysBetween(holding.firstBuyDate) <= 0 ? "Hôm nay" : `${daysBetween(holding.firstBuyDate)} ngày`}
           sub={<span className="text-muted">Từ {formatDate(holding.firstBuyDate)}</span>}
+        />
+        <Stat
+          label="Lãi theo kế hoạch"
+          value={
+            plan.hasPlan ? (
+              <span className={trendClass(plan.plannedProfit)}>{formatMoney(plan.plannedProfit)}</span>
+            ) : (
+              <span className="text-muted">Chưa có nấc chốt lời</span>
+            )
+          }
+          sub={
+            plan.hasPlan ? (
+              <span className="text-muted">
+                {formatPct(plan.plannedPct)} · {plan.steps} nấc,{" "}
+                {plan.remainingAfter > 0 ? `còn giữ ${formatQty(plan.remainingAfter)} cp` : "bán hết"}
+              </span>
+            ) : undefined
+          }
         />
         {holding.realizedPnl !== 0 && (
           <Stat label="Lãi đã chốt" value={<span className={trendClass(holding.realizedPnl)}>{formatMoney(holding.realizedPnl)}</span>} />
