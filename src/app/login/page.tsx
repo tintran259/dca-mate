@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
+import { SITE_DESCRIPTION, openGraph } from "@/lib/site";
 import { LoginForm } from "./login-form";
 
-export const metadata = { title: "Đăng nhập" };
+export const metadata: Metadata = {
+  title: "Đăng nhập",
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: "/login" },
+  openGraph: openGraph("/login"),
+};
 
 export default function LoginPage({ searchParams }: PageProps<"/login">) {
   return (

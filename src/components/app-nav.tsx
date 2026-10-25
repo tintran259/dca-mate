@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
-import { BellIcon, HomeIcon, PlusIcon, SettingsIcon } from "./icons";
+import { useEffect, useRef, type ReactNode } from "react";
+import { BellIcon, HomeIcon, MenuIcon, PlusIcon, SettingsIcon, XIcon } from "./icons";
 import { cn } from "./ui";
 
 const ITEMS = [
@@ -25,9 +25,9 @@ export function TopNav({ badge }: { badge: ReactNode }) {
   return <TopNavView badge={badge} pathname={usePathname()} />;
 }
 
-/** Thanh tab dưới đáy trên điện thoại, dễ bấm bằng ngón cái */
-export function BottomNav({ badge }: { badge: ReactNode }) {
-  return <BottomNavView badge={badge} pathname={usePathname()} />;
+/** Menu trên điện thoại: nút ☰ ở thanh trên cùng, mở drawer từ cạnh phải */
+export function MobileMenu({ badge, hasAlerts }: { badge: ReactNode; hasAlerts: ReactNode }) {
+  return <MobileMenuView badge={badge} hasAlerts={hasAlerts} pathname={usePathname()} />;
 }
 
 // Bản không đọc URL, hiển thị trong lúc chờ (prerender) trước khi biết trang hiện tại
@@ -42,7 +42,7 @@ export function TopNavView({ badge, pathname = "" }: NavProps) {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "relative inline-flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium transition",
+              "relative inline-flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium motion-ui",
               active ? "bg-primary-soft text-primary" : "text-muted hover:bg-surface-2 hover:text-fg",
             )}
           >
@@ -59,41 +59,77 @@ export function TopNavView({ badge, pathname = "" }: NavProps) {
   );
 }
 
-export function BottomNavView({ badge, pathname = "" }: NavProps) {
+export function MobileMenuView({
+  badge,
+  hasAlerts,
+  pathname = "",
+}: NavProps & { hasAlerts: ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  // Chuyển trang thì đóng menu
+  useEffect(() => {
+    ref.current?.close();
+  }, [pathname]);
   return (
-    <nav
-      className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur md:hidden"
-      aria-label="Điều hướng chính"
-    >
-      <ul className="mx-auto grid h-16 max-w-md grid-cols-4">
-        {ITEMS.map((item) => {
-          const active = isActive(pathname, item.href);
-          return (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex h-full flex-col items-center justify-center gap-0.5 text-xs font-medium transition",
-                  active ? "text-primary" : "text-muted",
-                )}
-              >
-                <span
-                  className={cn(
-                    "relative flex items-center justify-center",
-                    item.primary ? "size-9 rounded-full bg-primary text-primary-fg" : "h-7 w-12 rounded-full",
-                    active && !item.primary && "bg-primary-soft",
-                  )}
-                >
-                  <item.icon size={20} />
-                  {item.badge && <span className="absolute -top-1 -right-0.5">{badge}</span>}
-                </span>
-                {item.label}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+    <div className="md:hidden">
+      <button
+        type="button"
+        className="btn-ghost relative size-10 min-h-10 p-0"
+        aria-label="Mở menu"
+        aria-haspopup="dialog"
+        onClick={() => ref.current?.showModal()}
+      >
+        <MenuIcon size={22} />
+        {/* Chấm đỏ khi có cảnh báo mới, vì menu đang đóng thì không thấy số cảnh báo */}
+        <span className="absolute top-1.5 right-1.5">{hasAlerts}</span>
+      </button>
+      <dialog
+        ref={ref}
+        aria-label="Menu"
+        className="drawer"
+        onClick={(e) => e.target === e.currentTarget && e.currentTarget.close()}
+      >
+        <div className="flex h-full flex-col">
+          <div className="flex h-14 items-center justify-between border-b border-line px-4">
+            <span className="font-bold tracking-tight">Menu</span>
+            <form method="dialog">
+              <button type="submit" className="btn-ghost size-10 min-h-10 p-0" aria-label="Đóng menu">
+                <XIcon size={20} />
+              </button>
+            </form>
+          </div>
+          <nav
+            aria-label="Điều hướng chính"
+            className="flex-1 overflow-y-auto p-3"
+            // Bấm link của chính trang đang mở thì URL không đổi: vẫn đóng menu
+            onClick={(e) => (e.target as HTMLElement).closest("a") && ref.current?.close()}
+          >
+            <Link href="/positions/new" className="btn-primary mb-3 w-full">
+              <PlusIcon size={18} /> Thêm mã
+            </Link>
+            <ul className="space-y-1">
+              {ITEMS.filter((i) => !i.primary).map((item) => {
+                const active = isActive(pathname, item.href);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "flex min-h-12 items-center gap-3 rounded-xl px-3 text-base font-medium motion-ui",
+                        active ? "bg-primary-soft text-primary" : "text-fg active:bg-surface-2",
+                      )}
+                    >
+                      <item.icon size={20} />
+                      <span className="flex-1">{item.label}</span>
+                      {item.badge && badge}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        </div>
+      </dialog>
+    </div>
   );
 }

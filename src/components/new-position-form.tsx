@@ -55,7 +55,8 @@ export function NewPositionForm() {
       }
       setExchange(res.exchange);
       setLookup({ symbol: sym, price: res.price });
-      if (!price) setPrice(String(res.price));
+      // Kết quả về sau khi người dùng đã nhập giá thì giữ giá đã nhập
+      setPrice((current) => current || String(res.price));
     });
   };
 
@@ -199,7 +200,7 @@ export function NewPositionForm() {
         )}
 
         {/* Nút lưu: dính đáy trên điện thoại/tablet, nằm trong cột trái trên desktop */}
-        <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur md:bottom-0 lg:static lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur lg:static lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
           <SubmitButton className="btn-primary w-full" pending={pending} pendingText="Đang tạo…">
             Lưu vị thế
           </SubmitButton>

@@ -8,9 +8,12 @@ function secret(): string | undefined {
   return process.env.SESSION_SECRET || process.env.APP_PASSWORD;
 }
 
-/** Không đặt APP_PASSWORD khi chạy local thì bỏ qua đăng nhập. Trên production luôn bắt buộc. */
+/**
+ * Không đặt APP_PASSWORD thì bỏ qua đăng nhập (kể cả khi deploy): ai có link cũng vào được.
+ * Đặt APP_PASSWORD để bật trang nhập mật khẩu.
+ */
 export function authDisabled(): boolean {
-  return !process.env.APP_PASSWORD && process.env.NODE_ENV !== "production";
+  return !process.env.APP_PASSWORD;
 }
 
 async function hmac(value: string, key: string): Promise<string> {

@@ -27,6 +27,16 @@ import {
   type PlanHints,
   type SimulationRow,
 } from "./calc";
+import { todayVN } from "./format";
+import {
+  buildIntraday,
+  buildPortfolioHistory,
+  buildPriceHistory,
+  type IntradayPoint,
+  type PortfolioPoint,
+  type PricePoint,
+} from "./portfolio";
+import { fetchDailyCloses, fetchIntraday } from "./prices";
 
 export type LevelView = PlanLevel & {
   trigger: number | null;
@@ -180,4 +190,74 @@ export async function countNewAlerts(): Promise<number> {
     .from(alerts)
     .where(and(eq(alerts.status, "new")));
   return row?.n ?? 0;
+}
+
+export type PortfolioHistory = {
+  points: PortfolioPoint[];
+  /** Giá đóng cửa của các mã đang giữ, tối đa 1 năm, không phụ thuộc ngày mua */
+  prices: PricePoint[];
+  /** Số cổ, vốn và giá vốn TB hiện tại của các mã đang giữ (đường giá vốn, giá trị trong phiên) */
+  holdings: Record<string, { quantity: number; totalCost: number; avgCost: number }>;
+  /** Phiên gần nhất (khung 1D): nến 5 phút và giá tham chiếu (đóng cửa phiên trước) của từng mã */
+  intraday: { date: string | null; points: IntradayPoint[]; refPrices: Record<string, number> };
+  /** Các mã theo thứ tự tạo vị thế: màu trên biểu đồ gắn theo thứ tự này nên không đổi khi lọc */
+  symbols: string[];
+};
+
+/** Giá trị danh mục và giá các mã theo ngày cho biểu đồ ở trang tổng quan. */
+export async function getPortfolioHistory(): Promise<PortfolioHistory> {
+  await connection();
+  const db = await getDb();
+  const [rows, txs] = await Promise.all([
+    db.select().from(positions).orderBy(positions.id),
+    db.select().from(transactions),
+  ]);
+  const list = rows.map((p) => ({
+    symbol: p.symbol,
+    status: p.status,
+    lastPrice: p.lastPrice,
+    txs: txs.filter((t) => t.positionId === p.id),
+  }));
+  const symbols = [...new Set(list.filter((p) => p.txs.length > 0).map((p) => p.symbol))];
+  const today = todayVN();
+  const yearAgo = new Date(Date.parse(`${today}T00:00:00Z`) - 366 * 86_400_000).toISOString().slice(0, 10);
+  const closes = new Map(
+    await Promise.all(
+      symbols.map(async (sym) => {
+        const firstTrade = list
+          .filter((p) => p.symbol === sym)
+          .flatMap((p) => p.txs.map((t) => t.tradeDate))
+          .sort()[0];
+        const from = firstTrade < yearAgo ? firstTrade : yearAgo;
+        // Nguồn giá lỗi: biểu đồ vẫn vẽ được theo giá khớp lệnh và giá hiện tại
+        const data = await fetchDailyCloses(sym, from).catch(() => []);
+        return [sym, data] as const;
+      }),
+    ),
+  );
+  const held = list
+    .filter((p) => p.status === "open")
+    .map((p) => ({ ...p, holding: computeHolding(p.txs) }))
+    .filter((p) => p.holding.quantity > 0);
+  const candles = new Map(
+    await Promise.all(held.map(async (p) => [p.symbol, await fetchIntraday(p.symbol).catch(() => [])] as const)),
+  );
+  const session = buildIntraday(candles);
+  // Giá tham chiếu = giá đóng cửa gần nhất trước phiên đang xem
+  const refPrices = Object.fromEntries(
+    held.flatMap((p) => {
+      const before = (closes.get(p.symbol) ?? []).filter((c) => session.date && c.date < session.date);
+      const ref = before.at(-1)?.close;
+      return ref ? [[p.symbol, ref]] : [];
+    }),
+  );
+  return {
+    points: buildPortfolioHistory(list, closes, today),
+    prices: buildPriceHistory(held, closes, today),
+    holdings: Object.fromEntries(
+      held.map((p) => [p.symbol, { quantity: p.holding.quantity, totalCost: p.holding.totalCost, avgCost: p.holding.avgCost }]),
+    ),
+    intraday: { ...session, refPrices },
+    symbols,
+  };
 }

@@ -21,6 +21,11 @@
   --warn-soft: #fff3e0;
   --ring: #2453d64d;
 
+  /* Chuyển động (theo skill animate): ease-out mạnh cho UI, ease-drawer kiểu iOS cho bottom sheet */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
   /* Biểu đồ: 6 màu phân loại đầu của bảng màu dataviz, đã chạy validate_palette.js trên nền #ffffff */
   --chart-1: #2a78d6;
   --chart-2: #eb6834;
@@ -162,7 +167,11 @@ body {
 }
 
 @utility btn {
-  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition select-none active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60;
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold select-none active:scale-[0.97] disabled:pointer-events-none disabled:opacity-60;
+  touch-action: manipulation;
+  transition-property: transform, color, background-color, border-color, filter, opacity;
+  transition-duration: 160ms;
+  transition-timing-function: var(--ease-out);
 }
 @utility btn-primary {
   @apply btn bg-primary text-primary-fg hover:brightness-110;
@@ -214,15 +223,211 @@ label:has(> input[type="radio"]) {
   outline: none;
 }
 
-/* Tôn trọng cài đặt giảm chuyển động của hệ điều hành */
+/* Đổi trạng thái nhỏ (màu, xoay mũi tên): ngắn, ease-out */
+@utility motion-ui {
+  transition-property: transform, color, background-color, border-color, box-shadow, filter, opacity;
+  transition-duration: 200ms;
+  transition-timing-function: var(--ease-out);
+}
+
+/* ---------- Popup (<dialog>) ----------
+   Hiện: mờ dần + phóng nhẹ từ 0.96 ở giữa màn hình. Đóng: đi ngược lại.
+   allow-discrete giữ dialog hiển thị trong lúc chạy hiệu ứng đóng. */
+.modal {
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity 250ms var(--ease-out),
+    transform 250ms var(--ease-out),
+    overlay 250ms var(--ease-out) allow-discrete,
+    display 250ms var(--ease-out) allow-discrete;
+}
+.modal:not([open]) {
+  opacity: 0;
+  transform: scale(0.96);
+}
+@starting-style {
+  .modal[open] {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.modal::backdrop,
+.sheet::backdrop {
+  background: rgb(0 0 0 / 0.5);
+  opacity: 1;
+  transition:
+    opacity 250ms var(--ease-out),
+    overlay 250ms var(--ease-out) allow-discrete,
+    display 250ms var(--ease-out) allow-discrete;
+}
+.modal:not([open])::backdrop,
+.sheet:not([open])::backdrop {
+  opacity: 0;
+}
+@starting-style {
+  .modal[open]::backdrop,
+  .sheet[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/* ---------- Bottom sheet trên điện thoại (Ghi lệnh, Sửa kế hoạch) ----------
+   Dưới lg: <dialog> trượt lên từ đáy. Từ lg trở lên: hiện như một card bình thường trong trang. */
+.sheet {
+  /* Bỏ style mặc định của <dialog>. Không reset margin ở đây: trên desktop sheet nằm trong
+     cột space-y-4, cần giữ khoảng cách với khối bên dưới */
+  padding: 0;
+  border: 0;
+  max-width: none;
+  max-height: none;
+  color: inherit;
+  background: transparent;
+}
+@media (width < 64rem) {
+  .sheet {
+    margin: 0;
+    position: fixed;
+    inset: auto 0 0 0;
+    width: 100%;
+    max-height: 88dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 1.25rem 1.25rem 0 0;
+    background: var(--surface);
+    padding-bottom: env(safe-area-inset-bottom);
+    transform: translateY(0);
+    transition:
+      transform 500ms var(--ease-drawer),
+      overlay 500ms var(--ease-drawer) allow-discrete,
+      display 500ms var(--ease-drawer) allow-discrete;
+  }
+  .sheet:not([open]) {
+    transform: translateY(100%);
+  }
+  @starting-style {
+    .sheet[open] {
+      transform: translateY(100%);
+    }
+  }
+  /* Nút lưu của form dài dính ở đáy sheet, không phải cuộn xuống cuối mới bấm được */
+  .sheet .sheet-footer {
+    position: sticky;
+    bottom: 0;
+    margin-inline: -1rem;
+    margin-bottom: -1rem;
+    padding: 0.75rem 1rem 1rem;
+    background: var(--surface);
+  }
+}
+@media (width >= 64rem) {
+  .sheet,
+  .sheet:not([open]) {
+    display: block;
+    position: static;
+    width: auto;
+  }
+  .sheet-only {
+    display: none;
+  }
+}
+
+/* ---------- Drawer menu trên điện thoại ----------
+   Trượt vào từ cạnh phải, phía có nút ☰, và đóng theo đúng đường đó. */
+.drawer {
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: 0;
+  width: min(80vw, 20rem);
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  color: inherit;
+  background: var(--surface);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  transform: translateX(0);
+  transition:
+    transform 400ms var(--ease-drawer),
+    overlay 400ms var(--ease-drawer) allow-discrete,
+    display 400ms var(--ease-drawer) allow-discrete;
+}
+.drawer:not([open]) {
+  transform: translateX(100%);
+}
+@starting-style {
+  .drawer[open] {
+    transform: translateX(100%);
+  }
+}
+.drawer::backdrop {
+  background: rgb(0 0 0 / 0.5);
+  opacity: 1;
+  transition:
+    opacity 400ms var(--ease-drawer),
+    overlay 400ms var(--ease-drawer) allow-discrete,
+    display 400ms var(--ease-drawer) allow-discrete;
+}
+.drawer:not([open])::backdrop {
+  opacity: 0;
+}
+@starting-style {
+  .drawer[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/* Thông báo kết quả sau khi bấm (Notice): hiện ra nhẹ để người dùng thấy app đã nhận lệnh */
+.notice-in {
+  transition:
+    opacity 200ms var(--ease-out),
+    transform 200ms var(--ease-out);
+}
+@starting-style {
+  .notice-in {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Giảm chuyển động: bỏ dịch chuyển, phóng to; vẫn giữ mờ dần để không bị giật */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+  html {
+    scroll-behavior: auto;
+  }
+  [class*="btn"]:active,
+  .modal,
+  .modal:not([open]),
+  .sheet,
+  .sheet:not([open]),
+  .drawer,
+  .drawer:not([open]),
+  .notice-in {
+    transform: none !important;
+  }
+  .drawer {
+    transition-property: opacity, overlay, display;
+    transition-duration: 200ms;
+  }
+  .drawer:not([open]) {
+    opacity: 0;
+  }
+  .sheet {
+    transition-property: opacity, overlay, display;
+    transition-duration: 200ms;
+  }
+  .sheet:not([open]) {
+    opacity: 0;
+  }
+  @starting-style {
+    .modal[open] {
+      transform: none;
+    }
+    .sheet[open],
+    .drawer[open] {
+      transform: none;
+      opacity: 0;
+    }
   }
 }
 

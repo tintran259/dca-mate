@@ -1,7 +1,8 @@
-// E2E cho DCA Mate: chạy `npm run test:e2e` (build rồi chạy file này).
-// Khởi động `next start` với database tạm (PGlite) để không đụng tới .data/ của người dùng,
-// rồi dùng Chrome đã cài trên máy để đi qua các case trong docs/test-cases.md.
-import { spawn } from "node:child_process";
+// E2E cho DCA Mate: chạy `npm run test:e2e`.
+// Build vào .next-e2e (không đụng .next của `next dev` đang chạy), khởi động `next start` với database tạm
+// (PGlite) để không đụng tới .data/ của người dùng, rồi dùng Chrome đã cài trên máy để đi qua các case
+// trong docs/test-cases.md.
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,11 +12,19 @@ const PORT = Number(process.env.E2E_PORT ?? 3211);
 const BASE = `http://localhost:${PORT}`;
 const PASSWORD = "e2e-pass";
 const CRON_SECRET = "e2e-cron";
+// Giá giả lập thay cho API giá thật, để kết quả không đổi theo thị trường; FPT cố ý không có giá
+const MOCK_PRICES = "HPG:21000,CTG:30950";
 const dbDir = mkdtempSync(join(tmpdir(), "dca-mate-e2e-"));
+
+process.env.NEXT_DIST_DIR = ".next-e2e";
+if (!process.argv.includes("--no-build")) {
+  const build = spawnSync(process.execPath, ["node_modules/next/dist/bin/next", "build"], { stdio: "inherit" });
+  if (build.status !== 0) process.exit(build.status ?? 1);
+}
 
 // ---------- khởi động server ----------
 const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", String(PORT)], {
-  env: { ...process.env, APP_PASSWORD: PASSWORD, CRON_SECRET, PGLITE_DIR: join(dbDir, "pglite"), DATABASE_URL: "" },
+  env: { ...process.env, APP_PASSWORD: PASSWORD, CRON_SECRET, MOCK_PRICES, PGLITE_DIR: join(dbDir, "pglite"), DATABASE_URL: "" },
   stdio: ["ignore", "pipe", "pipe"],
 });
 let serverLog = "";
@@ -76,6 +85,7 @@ page.on("pageerror", (e) => consoleErrors.push(e.message));
 page.on("console", (m) => m.type() === "error" && consoleErrors.push(m.text()));
 
 let positionPath = "";
+let ctgPath = "";
 const stats = () => page.locator("section[aria-label='Chỉ số vị thế']").innerText();
 const dcaRung = (i) => page.locator("ol.relative > li").filter({ hasText: "DCA -10,0%" }).nth(i);
 async function openDetail() {
@@ -438,6 +448,174 @@ try {
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow, 0, `tràn ngang ở ${path}`);
     }
+    await page.setViewportSize({ width: 1440, height: 900 });
+  });
+
+  const header = async () => ({
+    price: await page.locator(".num.text-3xl").first().innerText(),
+    pnl: await page.locator(".num.text-3xl + div").first().innerText(),
+    label: await page.locator("h1").locator("xpath=../following-sibling::p").innerText(),
+  });
+  const digits = async (sel) => (await page.locator(sel).inputValue()).replace(/\D/g, "");
+
+  await tc("TC25", "Tạo mã: giá hiện tại lấy theo thị trường, không phải giá mua", async () => {
+    await page.goto(BASE + "/positions/new");
+    await page.locator("#symbol").fill("CTG");
+    await page.locator("#price").fill("34000");
+    await page.locator("#quantity").fill("100");
+    expect(await digits("#fee"), "5100", "phí mua tự tính 0,15%");
+    await page.getByRole("button", { name: "Lưu vị thế" }).click();
+    await page.waitForURL(/\/positions\/\d+/);
+    ctgPath = new URL(page.url()).pathname;
+    await page.getByText("Bậc thang kế hoạch").waitFor();
+    const h = await header();
+    expect(h.price, "30.950", "giá hiện tại");
+    expectIncludes(h.label, "Giá cập nhật", "nhãn giá");
+    expectIncludes(h.pnl, "-9,3%", "lỗ so với giá vốn 34.051");
+    expect(after(await stats(), "Giá vốn TB"), "34.051", "giá vốn TB gồm phí");
+  });
+
+  await tc("TC26", "Tạo mã khi không lấy được giá: tạm dùng giá mua", async () => {
+    await page.goto(BASE + "/positions/new");
+    await page.locator("#symbol").fill("FPT");
+    await page.locator("#price").fill("100000");
+    await page.locator("#quantity").fill("100");
+    await page.getByRole("button", { name: "Lưu vị thế" }).click();
+    await page.waitForURL(/\/positions\/\d+/);
+    await page.getByText("Bậc thang kế hoạch").waitFor();
+    const h = await header();
+    expect(h.price, "100.000", "giá hiện tại = giá mua");
+    expectIncludes(h.label, "Giá lúc mua", "nhãn giá");
+  });
+
+  await tc("TC27", "Phí, thuế tự tính khi ghi lệnh mua/bán", async () => {
+    await page.goto(BASE + ctgPath);
+    await page.getByText("Bậc thang kế hoạch").waitFor();
+    await page.locator("#tx-price").fill("31000");
+    await page.locator("#tx-qty").fill("100");
+    expect(await digits("#tx-fee"), "4650", "phí mua 0,15%");
+    await page.getByRole("radio", { name: "Bán" }).check({ force: true });
+    await page.locator("#tx-price").fill("31000");
+    await page.locator("#tx-qty").fill("100");
+    expect(await digits("#tx-fee"), "4650", "phí bán 0,15%");
+    expect(await digits("#tx-tax"), "3100", "thuế bán 0,1%");
+  });
+
+  await tc("TC28", "Route cron cập nhật giá theo nguồn, mã không có giá báo thiếu", async () => {
+    const res = await fetch(`${BASE}/api/cron/check-prices?force=1`, { headers: { Authorization: `Bearer ${CRON_SECRET}` } });
+    const body = await res.json();
+    expect(body.checked, 2, "số mã đang giữ");
+    expect(body.updated.join(","), "CTG", "mã cập nhật được");
+    expect(body.missing.join(","), "FPT", "mã không có giá");
+  });
+  await tc("TC37", "SEO: file công khai đọc được khi bật mật khẩu, trang dữ liệu không cho index", async () => {
+    // fetch không có cookie đăng nhập
+    for (const [route, type] of [
+      ["/robots.txt", "text/plain"],
+      ["/sitemap.xml", "application/xml"],
+      ["/opengraph-image", "image/png"],
+      ["/apple-icon", "image/png"],
+      ["/manifest.webmanifest", "application/manifest+json"],
+    ]) {
+      const res = await fetch(BASE + route, { redirect: "manual" });
+      expect(res.status, 200, route);
+      expectIncludes(res.headers.get("content-type") ?? "", type, `${route} content-type`);
+    }
+    const robots = await (await fetch(BASE + "/robots.txt")).text();
+    expectIncludes(robots, "Allow: /login", "robots cho phép trang đăng nhập");
+    expectIncludes(robots, "Disallow: /", "robots chặn trang dữ liệu");
+    const login = await (await fetch(BASE + "/login", { headers: { "User-Agent": "Googlebot/2.1" } })).text();
+    expectIncludes(login, 'property="og:image"', "trang đăng nhập có ảnh xem trước");
+    expectIncludes(login, 'rel="canonical"', "trang đăng nhập có canonical");
+    if (login.includes("noindex")) throw new Error("trang đăng nhập không được noindex");
+    await page.goto(BASE + "/");
+    const robotsMeta = await page.locator('meta[name="robots"]').getAttribute("content");
+    expect(robotsMeta, "noindex, nofollow", "trang tổng quan");
+  });
+
+  await tc("TC33", "Điện thoại: menu ☰ mở drawer, chuyển trang thì tự đóng", async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(BASE + "/");
+    expect(await page.locator("nav[aria-label='Điều hướng chính']").filter({ visible: true }).count(), 0, "không còn thanh nav hiện sẵn");
+    await page.getByRole("button", { name: "Mở menu" }).click();
+    const menu = page.getByRole("dialog", { name: "Menu" });
+    await menu.waitFor();
+    await menu.getByRole("link", { name: "Cảnh báo" }).click();
+    await page.waitForURL(/\/alerts/);
+    await menu.waitFor({ state: "hidden" });
+    await page.setViewportSize({ width: 1440, height: 900 });
+  });
+
+  await tc("TC29", "Điện thoại: Ghi lệnh mở trong bottom sheet, đóng bằng Esc", async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(BASE + ctgPath);
+    await page.getByText("Bậc thang kế hoạch").waitFor();
+    const sheet = page.locator("dialog#trade");
+    expect(await sheet.isVisible(), false, "sheet ẩn khi chưa mở");
+    await page.getByRole("button", { name: "Ghi lệnh", exact: true }).click();
+    await page.getByRole("dialog", { name: "Ghi lệnh mua / bán" }).waitFor();
+    expect(await page.locator("#tx-price").isVisible(), true, "form nằm trong sheet");
+    await page.keyboard.press("Escape");
+    await sheet.waitFor({ state: "hidden" });
+  });
+
+  await tc("TC30", "Điện thoại: Sửa kế hoạch mở trong sheet, nút lưu luôn thấy", async () => {
+    await page.getByRole("button", { name: "Sửa kế hoạch", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Sửa kế hoạch" });
+    await dialog.waitFor();
+    await page.waitForTimeout(600);
+    const save = dialog.getByRole("button", { name: "Lưu kế hoạch" });
+    expect(await save.isVisible(), true, "nút lưu hiện");
+    const box = await save.boundingBox();
+    if (!box || box.y + box.height > 844) throw new Error("nút lưu nằm ngoài màn hình: " + JSON.stringify(box));
+    await dialog.getByRole("button", { name: "Đóng" }).click();
+    await page.locator("dialog#plan").waitFor({ state: "hidden" });
+  });
+
+  await tc("TC34", "Trang Cảnh báo, Cài đặt rộng bằng Tổng quan", async () => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const width = async (path) => {
+      await page.goto(BASE + path);
+      await page.waitForLoadState("networkidle");
+      return page.evaluate(() => Math.round(document.querySelector("main > *").getBoundingClientRect().width));
+    };
+    const overview = await width("/");
+    expect(await width("/alerts"), overview, "Cảnh báo");
+    expect(await width("/settings"), overview, "Cài đặt");
+    expect(await width("/positions/new"), overview, "Thêm mã");
+  });
+
+  await tc("TC31", "Desktop: Ghi lệnh và Sửa kế hoạch nằm sẵn trong trang, không phải popup", async () => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(BASE + ctgPath);
+    await page.getByText("Bậc thang kế hoạch").waitFor();
+    expect(await page.locator("#tx-price").isVisible(), true, "form ghi lệnh hiện sẵn");
+    expect(await page.getByRole("dialog").count(), 0, "không có popup nào đang mở");
+    expect(await page.getByRole("button", { name: "Ghi lệnh", exact: true }).isVisible(), false, "ẩn nút mở sheet");
+  });
+
+  await tc("TC32", "Biểu đồ ở tổng quan: đổi chế độ, xem dạng bảng", async () => {
+    await page.goto(BASE + "/");
+    const chart = page.locator("section[aria-labelledby=portfolio-chart-title]");
+    await chart.waitFor();
+    expectIncludes(await chart.innerText(), "Biểu đồ danh mục", "tiêu đề");
+    // E2E có 2 mã đang giữ (CTG, FPT) nên có đủ 3 chế độ
+    for (const view of ["Giá", "Tài sản", "Theo mã"]) {
+      await chart.getByText(view, { exact: true }).click();
+      await page.waitForTimeout(100);
+    }
+    expectIncludes(await chart.innerText(), "CTG", "chú thích có mã đang giữ");
+    await chart.getByText("Tài sản", { exact: true }).click();
+    expectIncludes(await chart.innerText(), "Vốn đang rót", "chú thích vốn");
+    await chart.getByText("Xem dạng bảng").click();
+    const rows = await chart.locator("tbody tr").count();
+    if (rows < 1) throw new Error("bảng không có dòng nào");
+    // Khung thời gian: 1D, 1W, 1M, 3M, 6M, 1Y; không còn "Tất cả"
+    const ranges = await chart.locator("[role=radiogroup]").last().innerText();
+    expect(ranges.replace(/\s+/g, " ").trim(), "1D 1W 1M 3M 6M 1Y", "các khung thời gian");
+    // Giá giả lập không có nến trong phiên: 1D báo chưa có dữ liệu thay vì vẽ sai
+    await chart.getByText("1D", { exact: true }).click();
+    await chart.getByText("Chưa có dữ liệu trong phiên").waitFor();
   });
 } finally {
   await browser.close();

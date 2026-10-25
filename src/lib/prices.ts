@@ -1,4 +1,6 @@
 import "server-only";
+import { cacheLife } from "next/cache";
+import type { DailyClose, IntradayCandle } from "./portfolio";
 
 // Các API công khai không chính thức của công ty chứng khoán: có thể đổi bất cứ lúc nào,
 // nên thử lần lượt nhiều nguồn, nguồn này lỗi thì chuyển sang nguồn khác.
@@ -78,6 +80,19 @@ const dnse: Provider = {
 
 const PROVIDERS = [vps, ssi, dnse];
 
+// Chỉ dùng khi test (E2E): MOCK_PRICES="HPG:21000,CTG:30950" thay cho mọi nguồn giá thật,
+// mã không có trong danh sách coi như không lấy được giá
+function mockPrices(): Map<string, number> | null {
+  const raw = process.env.MOCK_PRICES;
+  if (!raw) return null;
+  const out = new Map<string, number>();
+  for (const pair of raw.split(",")) {
+    const [sym, price] = pair.split(":");
+    if (sym && Number(price) > 0) out.set(sym.trim().toUpperCase(), Number(price));
+  }
+  return out;
+}
+
 const MARKETS: Record<string, "HOSE" | "HNX" | "UPCOM"> = {
   STO: "HOSE",
   STX: "HNX",
@@ -92,6 +107,11 @@ export async function lookupSymbol(
   symbol: string,
 ): Promise<{ exchange: "HOSE" | "HNX" | "UPCOM"; price: number } | null> {
   const sym = symbol.toUpperCase();
+  const mock = mockPrices();
+  if (mock) {
+    const price = mock.get(sym);
+    return price ? { exchange: "HOSE", price } : null;
+  }
   try {
     type Row = { sym: string; marketId: string; lastPrice: number; r: number };
     const rows = await getJson<Row[]>(`https://bgapidatafeed.vps.com.vn/getliststockdata/${sym}`);
@@ -125,6 +145,18 @@ export async function fetchPrices(symbols: string[]): Promise<PriceResult> {
   const sources: Record<string, string> = {};
   const errors: string[] = [];
 
+  const mock = mockPrices();
+  if (mock) {
+    for (const sym of wanted) {
+      const price = mock.get(sym);
+      if (price) {
+        prices.set(sym, price);
+        sources[sym] = "MOCK";
+      }
+    }
+    return { prices, sources, errors };
+  }
+
   for (const provider of PROVIDERS) {
     const missing = wanted.filter((s) => !prices.has(s));
     if (missing.length === 0) break;
@@ -142,4 +174,56 @@ export async function fetchPrices(symbols: string[]): Promise<PriceResult> {
   }
 
   return { prices, sources, errors };
+}
+
+/**
+ * Giá đóng cửa theo ngày từ `fromDate` (YYYY-MM-DD) tới nay, nguồn DNSE (nến ngày, nghìn đồng).
+ * Cache vài giờ: giá đóng cửa ngày cũ không đổi, điểm hôm nay đã lấy từ giá hiện tại.
+ * Lỗi thì ném ra (không cache), để lần sau thử lại.
+ */
+export async function fetchDailyCloses(symbol: string, fromDate: string): Promise<DailyClose[]> {
+  "use cache";
+  cacheLife("hours");
+  if (process.env.MOCK_PRICES) return [];
+  type Body = { t?: number[]; c?: number[] };
+  const from = Math.floor(Date.parse(`${fromDate}T00:00:00+07:00`) / 1000) - 86_400;
+  const to = Math.floor(Date.now() / 1000);
+  const res = await fetch(
+    `https://services.entrade.com.vn/chart-api/v2/ohlcs/stock?from=${from}&to=${to}&symbol=${symbol}&resolution=1D`,
+    { headers: HEADERS, signal: AbortSignal.timeout(TIMEOUT_MS) },
+  );
+  if (!res.ok) throw new Error(`DNSE ${res.status}`);
+  const body = (await res.json()) as Body;
+  const t = body.t ?? [];
+  const c = body.c ?? [];
+  // Mốc thời gian của nến là 9:00 giờ VN; cộng 7 tiếng để lấy đúng ngày theo giờ VN
+  return t.flatMap((sec, i) =>
+    c[i] > 0 ? [{ date: new Date((sec + 7 * 3600) * 1000).toISOString().slice(0, 10), close: Math.round(c[i] * 1000) }] : [],
+  );
+}
+
+/**
+ * Nến 5 phút của vài ngày gần nhất (giờ VN), dùng cho khung 1D. Cache vài phút vì giá trong phiên đổi liên tục.
+ * Lỗi thì ném ra (không cache).
+ */
+export async function fetchIntraday(symbol: string): Promise<IntradayCandle[]> {
+  "use cache";
+  cacheLife("minutes");
+  if (process.env.MOCK_PRICES) return [];
+  type Body = { t?: number[]; c?: number[] };
+  const to = Math.floor(Date.now() / 1000);
+  // Lùi 7 ngày để luôn có phiên gần nhất, kể cả sau kỳ nghỉ cuối tuần
+  const from = to - 7 * 86_400;
+  const res = await fetch(
+    `https://services.entrade.com.vn/chart-api/v2/ohlcs/stock?from=${from}&to=${to}&symbol=${symbol}&resolution=5`,
+    { headers: HEADERS, signal: AbortSignal.timeout(TIMEOUT_MS) },
+  );
+  if (!res.ok) throw new Error(`DNSE ${res.status}`);
+  const body = (await res.json()) as Body;
+  const c = body.c ?? [];
+  return (body.t ?? []).flatMap((sec, i) => {
+    if (!(c[i] > 0)) return [];
+    const vn = new Date((sec + 7 * 3600) * 1000).toISOString();
+    return [{ date: vn.slice(0, 10), time: vn.slice(11, 16), close: Math.round(c[i] * 1000) }];
+  });
 }

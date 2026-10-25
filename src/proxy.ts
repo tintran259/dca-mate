@@ -12,6 +12,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Bỏ qua trang đăng nhập, route cron (tự kiểm tra CRON_SECRET) và file tĩnh
-  matcher: ["/((?!login|api/cron|_next/static|_next/image|favicon.ico|icon|manifest|.*\\.(?:svg|png|ico|webmanifest)$).*)"],
+  // Bỏ qua trang đăng nhập, route cron (tự kiểm tra CRON_SECRET), file tĩnh và file SEO
+  // (robots, sitemap, ảnh Open Graph, icon iOS) để công cụ tìm kiếm, mạng xã hội đọc được khi bật mật khẩu
+  matcher: ["/((?!login|api/cron|_next/static|_next/image|favicon.ico|icon|apple-icon|opengraph-image|robots.txt|sitemap.xml|manifest|.*\\.(?:svg|png|ico|webmanifest)$).*)"],
 };

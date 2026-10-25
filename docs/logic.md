@@ -19,16 +19,16 @@ Trợ lý cho **một nhà đầu tư cá nhân** mua cổ phiếu Việt Nam th
 | Web + API | Next.js 16 (App Router, Cache Components), TypeScript, Tailwind v4 | Deploy Vercel gói Hobby (miễn phí), region `sin1` |
 | Database | Neon Postgres + Drizzle ORM | Chạy local không cần Neon: tự dùng PGlite (Postgres nhúng) lưu ở `.data/` |
 | Giá cổ phiếu | API công khai VPS → SSI → DNSE | Nguồn này lỗi thì tự thử nguồn khác; có thể nhập giá tay |
-| Kiểm tra giá định kỳ | cron-job.org gọi `/api/cron/check-prices` mỗi 5 phút | Ngoài giờ giao dịch (T2–T6, 9h–15h giờ VN) route tự bỏ qua |
+| Kiểm tra giá định kỳ | Production: cron-job.org gọi `/api/cron/check-prices` mỗi 5 phút. Local (`next dev`): `src/instrumentation.ts` tự gọi route này mỗi 5 phút (tắt bằng `LOCAL_CRON=0`) | Ngoài phiên (ngoài T2–T6 9h–11h30, 13h–15h giờ VN) route tự bỏ qua |
 | Thông báo | Telegram Bot | |
-| Đăng nhập | 1 mật khẩu trong `APP_PASSWORD`, cookie ký HMAC | Local không đặt mật khẩu thì bỏ qua đăng nhập |
+| Đăng nhập | 1 mật khẩu trong `APP_PASSWORD`, cookie ký HMAC giữ 30 ngày | Không đặt `APP_PASSWORD` thì bỏ qua đăng nhập (kể cả khi deploy) |
 | Font, UI | IBM Plex Sans (có dấu tiếng Việt), icon SVG tự vẽ | Thiết kế mobile-first, có dark mode |
 
 ## 3. Các màn hình
 
 | Trang | Nội dung |
 |---|---|
-| **Tổng quan** `/` | Vốn đang rót, giá trị thị trường, lãi/lỗ tạm tính, lãi đã chốt; các nấc sắp chạm; thẻ từng mã đang giữ; mục "Đã đóng" |
+| **Tổng quan** `/` | Vốn đang rót, giá trị thị trường, lãi/lỗ tạm tính, lãi đã chốt ("Chưa chốt" khi chưa bán lần nào); các nấc sắp chạm; **Biểu đồ danh mục** (Giá: % biến động giá từng mã đang giữ, tối đa 1 năm, có đường giá vốn khi giữ 1 mã; Tài sản: giá trị thị trường so với vốn và lãi/lỗ trong kỳ, đã trừ phí và thuế bán như ô tổng quan; Theo mã: chỉ hiện khi giữ từ 2 mã; khung 1D/1W/1M/3M/6M/1Y tính tròn theo lịch: 1D là phiên gần nhất (nến 5 phút, so với giá tham chiếu), 1W từ thứ Hai, 1M từ ngày 1 tháng này, 3M/6M/1Y từ ngày 1 của tháng cách 2/5/11 tháng; có xem dạng bảng); thẻ từng mã đang giữ; mục "Đã đóng" |
 | **Thêm mã** `/positions/new` | Desktop 2 cột: trái là lệnh mua đầu tiên + nút Lưu (dính khi cuộn), phải là kế hoạch DCA và chốt lời. Gõ mã thì tự nhận sàn và giá hiện tại |
 | **Chi tiết mã** `/positions/[id]` | Chỉ số vị thế; bậc thang kế hoạch (các nấc xếp theo giá); mô phỏng DCA; sửa kế hoạch; lịch sử lệnh; ghi lệnh mua/bán; luận điểm đầu tư; nhập giá tay |
 | **Cảnh báo** `/alerts` | Tab "Cần xử lý" / "Đã xử lý"; mỗi cảnh báo có giá chạm, việc cần làm, nấc; nút "Đã làm, ghi lệnh" và "Bỏ qua" |
@@ -115,6 +115,7 @@ Khi ghi lệnh mua/bán tay (không bấm "Đã làm" ở nấc), app so sánh l
 
 ### 4.7 Cảnh báo
 
+- Lúc tạo vị thế, giá hiện tại lấy từ nguồn giá thị trường (không phải giá mua); mọi nguồn đều lỗi thì tạm dùng giá mua, nhãn hiện "Giá lúc mua".
 - Cron (hoặc nút "Cập nhật giá", hoặc nhập giá tay) lấy giá, so với kế hoạch. Nấc chạm lần đầu thì tạo cảnh báo, chuyển nấc sang "Đã nhắc" và gửi Telegram. **Mỗi nấc chỉ nhắc 1 lần.**
 - Ở trang Cảnh báo: "Đã làm, ghi lệnh" mở popup ghi lệnh; "Bỏ qua" và "Bỏ qua tất cả" có **popup xác nhận**. Cảnh báo đã xử lý **không hoàn tác được** (server cũng chặn).
 - Code tính cắt lỗ và trailing stop vẫn còn trong `evaluatePrice` nhưng không còn ô nhập trên giao diện, nên không bao giờ kích hoạt.
@@ -168,3 +169,19 @@ Theo thứ tự đã làm:
 10. Kiểm tra ô nhập dùng chung client/server; nút bán nhanh theo % kế hoạch chốt lời.
 11. Bán hết thì đóng mã (popup xác nhận); bỏ card "Quản lý"; trang Cảnh báo thiết kế lại, không còn hoàn tác.
 12. Bộ test e2e tự động và tài liệu test case.
+
+## Giao diện và chuyển động
+
+- Mọi trang trong app dùng chung độ rộng của layout (tối đa 72rem); trang Cài đặt chia 2 cột trên desktop.
+- Điều hướng trên điện thoại (dưới 768px): nút ☰ ở thanh trên mở drawer từ cạnh phải (Thêm mã, Tổng quan, Cảnh báo, Cài đặt); nút ☰ có chấm đỏ khi có cảnh báo mới. Không còn thanh tab dưới đáy.
+- Trên điện thoại (dưới 1024px), "Ghi lệnh" và "Sửa kế hoạch" mở thành bottom sheet (`Sheet` trong `form-controls.tsx`, dùng `<dialog>` gốc). Desktop vẫn giữ bố cục cũ trong trang. Vào trang từ "Đã làm, ghi lệnh" (`?trade=`) thì sheet ghi lệnh tự mở.
+- Chuyển động theo skill `animate` (`.claude/skills/animate`): token `--ease-out`, `--ease-in-out`, `--ease-drawer` trong `globals.css`. Nút nhấn thu nhỏ 0.97 trong 160ms; popup mờ dần và phóng từ 0.96 trong 250ms; sheet trượt từ đáy 500ms; thông báo kết quả hiện ra 200ms. Biểu đồ không có hiệu ứng (số liệu đọc hằng ngày không nên chuyển động).
+- Bật "Giảm chuyển động" trong hệ điều hành thì bỏ dịch chuyển, phóng to; chỉ giữ hiệu ứng mờ dần.
+- Lịch sử giá ngày lấy từ DNSE, cache vài giờ (`fetchDailyCloses`, `"use cache"`); nến 5 phút cho khung 1D cache vài phút (`fetchIntraday`). Nguồn lỗi thì biểu đồ vẽ theo giá khớp lệnh và giá hiện tại.
+
+## SEO
+
+- Tiêu đề, mô tả, từ khóa, Open Graph và Twitter card khai báo ở `src/app/layout.tsx` (nội dung chung trong `src/lib/site.ts`). URL tuyệt đối lấy từ `APP_URL`, không có thì domain production Vercel tự cấp.
+- Ảnh xem trước khi gửi link: `src/app/opengraph-image.tsx` (1200×630). Icon iPhone: `src/app/apple-icon.tsx` (PNG 180×180).
+- Chỉ trang đăng nhập được index (`robots.txt` cho phép `/login`, `sitemap.xml` chỉ có `/login`). Các trang trong app chứa danh mục cá nhân nên gắn `noindex, nofollow` và bị chặn trong robots, phòng khi để trống `APP_PASSWORD`.
+- `proxy.ts` bỏ qua robots, sitemap, ảnh Open Graph, icon để công cụ tìm kiếm và mạng xã hội đọc được cả khi bật mật khẩu.

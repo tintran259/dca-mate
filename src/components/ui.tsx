@@ -122,7 +122,7 @@ export function Notice({ tone, children }: { tone: "ok" | "error" | "warn" | "in
     info: "bg-primary-soft text-primary",
   }[tone];
   return (
-    <div role={tone === "error" ? "alert" : "status"} className={cn("rounded-xl px-3 py-2.5 text-sm", cls)}>
+    <div role={tone === "error" ? "alert" : "status"} className={cn("notice-in rounded-xl px-3 py-2.5 text-sm", cls)}>
       {children}
     </div>
   );

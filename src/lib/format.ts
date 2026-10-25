@@ -67,3 +67,10 @@ export function trendClass(value: number | null | undefined): string {
   if (value == null || Math.abs(value) < 1e-9) return "text-muted";
   return value > 0 ? "text-up" : "text-down";
 }
+
+/** "Mua hôm nay" / "Giữ 12 ngày" thay cho "giữ 0 ngày" */
+export function holdingAge(firstBuyDate: string | null): string {
+  if (!firstBuyDate) return "—";
+  const days = daysBetween(firstBuyDate);
+  return days <= 0 ? "Mua hôm nay" : `Giữ ${days} ngày`;
+}

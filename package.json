@@ -10,7 +10,8 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
-    "test:e2e": "next build && node e2e/run.mjs"
+    "test:e2e": "node e2e/run.mjs",
+    "test:telegram": "TELEGRAM_LIVE=1 vitest run src/lib/notify.test.ts -t \"gửi thật\""
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.11",

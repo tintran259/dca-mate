@@ -18,11 +18,12 @@ npm install
 npm run dev
 ```
 
-Mở http://localhost:3000. Khi chưa có `DATABASE_URL`, app dùng Postgres nhúng (PGlite) lưu ở `.data/`. Khi chưa có `APP_PASSWORD`, app không yêu cầu đăng nhập (chỉ áp dụng khi chạy local).
+Mở http://localhost:3000. Khi chưa có `DATABASE_URL`, app dùng Postgres nhúng (PGlite) lưu ở `.data/`. App dành cho 1 người dùng. Khi chưa đặt `APP_PASSWORD`, app không yêu cầu đăng nhập; đặt `APP_PASSWORD` để bật trang nhập mật khẩu (nên đặt khi deploy).
 
 ```bash
-npm test          # unit test phần tính toán
-npm run test:e2e  # build rồi chạy 24 case E2E trên Chrome với database tạm (cần cài Chrome)
+npm test              # unit test: tính toán, biểu đồ, luồng thông báo
+npm run test:e2e      # build rồi chạy các case E2E trên Chrome với database tạm (cần cài Chrome)
+npm run test:telegram # gửi 3 tin thật qua bot (đọc token, chat ID từ .env.local)
 npm run lint
 npm run build
 ```
@@ -35,11 +36,11 @@ Danh sách test case và quy tắc tính đang áp dụng: [docs/test-cases.md](
 2. Tạo `.env.local` từ `.env.example`, điền `DATABASE_URL`, rồi chạy `npm run db:migrate` để tạo bảng.
 3. Đẩy code lên GitHub, import vào Vercel. Khai báo các biến môi trường:
    - `DATABASE_URL`
-   - `APP_PASSWORD`: mật khẩu đăng nhập
+   - `APP_PASSWORD`: mật khẩu đăng nhập (nên đặt; để trống thì ai có link cũng xem và sửa được)
    - `CRON_SECRET`: chuỗi ngẫu nhiên, ví dụ tạo bằng `openssl rand -hex 24`
    - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`: xem hướng dẫn trong trang **Cài đặt** của app
    - `APP_URL`: ví dụ `https://dca-mate.vercel.app`
-4. **Kiểm tra giá tự động:** trên [cron-job.org](https://cron-job.org), tạo job gọi `https://<app>/api/cron/check-prices` mỗi 5 phút, kèm header `Authorization: Bearer <CRON_SECRET>`. Ngoài giờ giao dịch (T2–T6, 9h–15h giờ VN), route tự bỏ qua.
+4. **Kiểm tra giá tự động:** trên [cron-job.org](https://cron-job.org), tạo job gọi `https://<app>/api/cron/check-prices` mỗi 5 phút, kèm header `Authorization: Bearer <CRON_SECRET>`. Ngoài phiên (ngoài T2–T6 9h–11h30, 13h–15h giờ VN), route tự bỏ qua. Khi chạy `npm run dev`, app tự gọi route này mỗi 5 phút nên không cần cron-job.org (tắt bằng `LOCAL_CRON=0`).
 
 `vercel.json` đặt function ở region `sin1` (Singapore) để gọi API giá Việt Nam ổn định hơn.
 

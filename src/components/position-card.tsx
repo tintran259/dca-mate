@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { LevelView, PositionView } from "@/lib/data";
-import { daysBetween, formatMoney, formatPct, formatPrice, formatQty, trendClass } from "@/lib/format";
+import { formatMoney, formatPct, formatPrice, formatQty, holdingAge, trendClass } from "@/lib/format";
 import { ChevronRightIcon } from "./icons";
 import { Chip, cn } from "./ui";
 
@@ -14,7 +14,7 @@ export function PositionCard({ view }: { view: PositionView }) {
   return (
     <Link
       href={`/positions/${position.id}`}
-      className="card group block p-4 transition hover:border-primary/50 hover:shadow-sm focus-visible:ring-4 focus-visible:ring-(--ring) focus-visible:outline-none"
+      className="card group block p-4 motion-ui hover:border-primary/50 hover:shadow-sm focus-visible:ring-4 focus-visible:ring-(--ring) focus-visible:outline-none"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -23,7 +23,7 @@ export function PositionCard({ view }: { view: PositionView }) {
             <Chip>{position.exchange === "UPCOM" ? "UPCoM" : position.exchange}</Chip>
           </div>
           <div className="num mt-0.5 text-xs text-muted">
-            {formatQty(holding.quantity)} cp · giữ {holding.firstBuyDate ? daysBetween(holding.firstBuyDate) : 0} ngày
+            {formatQty(holding.quantity)} cp · {holdingAge(holding.firstBuyDate).toLowerCase()}
           </div>
         </div>
         <div className="text-right">
@@ -53,7 +53,7 @@ export function PositionCard({ view }: { view: PositionView }) {
         ) : (
           <span className="text-muted">Chưa có nấc nào đang chờ</span>
         )}
-        <ChevronRightIcon size={16} className="shrink-0 text-muted transition group-hover:translate-x-0.5" />
+        <ChevronRightIcon size={16} className="shrink-0 text-muted motion-ui group-hover:translate-x-0.5" />
       </div>
     </Link>
   );

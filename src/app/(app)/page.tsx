@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { BellIcon, ChevronRightIcon, PlusIcon, TrendDownIcon } from "@/components/icons";
+import { PortfolioChart } from "@/components/portfolio-chart";
 import { PositionCard, levelLabel } from "@/components/position-card";
 import { RefreshPricesButton } from "@/components/position-forms";
-import { EmptyState, Notice, PageHeader, PageSkeleton, Stat, cn } from "@/components/ui";
-import { countNewAlerts, getClosedPositions, getOpenPositions } from "@/lib/data";
+import { EmptyState, Notice, PageHeader, PageSkeleton, Skeleton, Stat, cn } from "@/components/ui";
+import { countNewAlerts, getClosedPositions, getOpenPositions, getPortfolioHistory } from "@/lib/data";
 import { formatDateTime, formatMoney, formatPct, formatPrice, trendClass } from "@/lib/format";
 
 export const metadata = { title: "Tổng quan" };
@@ -83,7 +84,7 @@ async function Dashboard() {
       {newAlerts > 0 && (
         <Link
           href="/alerts"
-          className="flex items-center gap-3 rounded-2xl bg-warn-soft px-4 py-3 text-warn transition hover:brightness-95"
+          className="flex items-center gap-3 rounded-2xl bg-warn-soft px-4 py-3 text-warn motion-ui hover:brightness-95"
         >
           <BellIcon size={20} />
           <span className="flex-1 text-sm font-medium">
@@ -101,7 +102,16 @@ async function Dashboard() {
           value={<span className={trendClass(pnl)}>{formatMoney(pnl)}</span>}
           sub={<span className={trendClass(pnl)}>{totalCost ? formatPct((pnl / totalCost) * 100) : "—"}</span>}
         />
-        <Stat label="Lãi đã chốt" value={<span className={trendClass(realized)}>{formatMoney(realized)}</span>} />
+        <Stat
+          label="Lãi đã chốt"
+          value={
+            realized === 0 ? (
+              <span className="text-muted">Chưa chốt</span>
+            ) : (
+              <span className={trendClass(realized)}>{formatMoney(realized)}</span>
+            )
+          }
+        />
         <p className="col-span-full -mt-1 text-xs text-muted">
           {lastUpdate ? `Giá cập nhật lúc ${formatDateTime(lastUpdate)}` : "Chưa cập nhật giá"} · đã trừ phí và thuế bán
         </p>
@@ -130,6 +140,13 @@ async function Dashboard() {
         </section>
       )}
 
+      {/* Lịch sử giá lấy từ nguồn ngoài: tải riêng để không chặn phần còn lại của trang */}
+      {views.length > 0 && (
+        <Suspense fallback={<Skeleton className="h-[26rem]" />}>
+          <PortfolioSection />
+        </Suspense>
+      )}
+
       {views.length > 0 ? (
         <section aria-label="Vị thế đang mở">
           <h2 className="mb-3 text-base font-semibold">Đang nắm giữ ({views.length})</h2>
@@ -154,7 +171,7 @@ async function Dashboard() {
         <details className="card group p-4 md:p-5">
           <summary className="flex cursor-pointer list-none items-center justify-between text-base font-semibold">
             Đã đóng ({closed.length})
-            <ChevronRightIcon size={18} className="text-muted transition group-open:rotate-90" />
+            <ChevronRightIcon size={18} className="text-muted motion-ui group-open:rotate-90" />
           </summary>
           <ul className="mt-3 divide-y divide-line">
             {closed.map((v) => (
@@ -172,4 +189,9 @@ async function Dashboard() {
       )}
     </div>
   );
+}
+
+async function PortfolioSection() {
+  const history = await getPortfolioHistory();
+  return <PortfolioChart {...history} />;
 }

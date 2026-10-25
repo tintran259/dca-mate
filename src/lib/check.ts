@@ -101,11 +101,3 @@ export async function applyManualPrice(positionId: number, price: number) {
   const messages = await applyPrice(view, price);
   return { alerts: messages, telegram: await notify(messages) };
 }
-
-/** Giờ giao dịch: T2–T6, 9:00–15:00 giờ Việt Nam. */
-export function isTradingHours(now = new Date()): boolean {
-  const vn = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
-  const day = vn.getDay();
-  const minutes = vn.getHours() * 60 + vn.getMinutes();
-  return day >= 1 && day <= 5 && minutes >= 9 * 60 && minutes <= 15 * 60;
-}

@@ -2,8 +2,8 @@
 
 Hai lớp test:
 
-- **Unit test** (`npm test`): phần tính toán trong `src/lib/calc.ts`: giá vốn, chuỗi DCA, chuỗi chốt lời, bước giá, lô 100.
-- **E2E** (`npm run test:e2e`, 24 case): chạy app thật trên trình duyệt Chrome với database tạm, đi qua các luồng dưới đây. Không đụng tới dữ liệu trong `.data/`.
+- **Unit test** (`npm test`, 100 test): giá vốn, chuỗi DCA, chuỗi chốt lời, bước giá, lô 100 (`calc.test.ts`); kiểm tra ô nhập (`validate.test.ts`); phí, thuế, lãi/lỗ sau phí và giờ trong phiên (`fees.test.ts`); dữ liệu biểu đồ tổng quan (`portfolio.test.ts`); luồng thông báo Telegram (`notify.test.ts`).
+- **E2E** (`npm run test:e2e`, 35 case): chạy app thật trên trình duyệt Chrome với database tạm, đi qua các luồng dưới đây. Không đụng tới dữ liệu trong `.data/`. Build vào `.next-e2e` (tsconfig riêng `tsconfig.e2e.json`) nên chạy được trong lúc `npm run dev` đang mở mà không làm hỏng cache của dev server. Thêm `-- --no-build` để chạy lại test mà không build. Giá thị trường dùng giá giả lập `MOCK_PRICES="HPG:21000,CTG:30950"` (FPT cố ý không có giá) để kết quả không đổi theo thị trường.
 
 Số liệu chung cho các case E2E: mã **HPG (HOSE)**, mua đầu **21.000 × 1.000 cp**, phí tự tính 0,15% (31.500đ), nên giá vốn TB là 21.031,5.
 Kế hoạch: 3 nấc DCA −10% (mua 1.000 / 1.000 / 1.500 cp), mẫu chốt lời "3 nấc" (+10% bán 30%, +20% bán 50%, +30% bán 100%).
@@ -29,6 +29,9 @@ Kế hoạch: 3 nấc DCA −10% (mua 1.000 / 1.000 / 1.500 cp), mẫu chốt l�
 | Chốt lời nấc 1 | Tính % tăng từ **giá vốn TB hiện tại** |
 | Chốt lời nấc sau | Tính từ giá nấc trước |
 | % bán | Tính trên số cổ còn lại sau nấc trước; 100% là bán hết |
+| Phí, thuế | Phí mua, phí bán mặc định 0,15% (`NEXT_PUBLIC_BUY_FEE_RATE`, `NEXT_PUBLIC_SELL_FEE_RATE`), thuế bán 0,1% cố định; tự điền theo giá trị lệnh, làm tròn tới đồng, sửa tay được. Giá vốn và lãi đã chốt dùng phí đã ghi trong lệnh; lãi/lỗ tạm tính, giá hòa vốn, mô phỏng dùng tỷ lệ |
+| Giá hiện tại lúc tạo mã | Lấy giá thị trường; không lấy được thì tạm dùng giá mua, nhãn "Giá lúc mua". Tra mã về muộn không ghi đè giá đã nhập |
+| Giờ trong phiên | T2–T6, 9:00–11:30 và 13:00–15:00 giờ VN; ngoài phiên route cron bỏ qua (trừ `force=1`) |
 | Làm tròn | Giá DCA làm tròn xuống, giá chốt lời làm tròn lên theo bước giá; khối lượng làm tròn xuống lô 100 |
 
 ## Danh sách case
@@ -59,3 +62,58 @@ Kế hoạch: 3 nấc DCA −10% (mua 1.000 / 1.000 / 1.500 cp), mẫu chốt l�
 | TC22 | Bán hết | Chọn Bán, "Bán hết", "Ghi lệnh bán", xác nhận | Popup "đóng mã HPG"; về `/` với thông báo "Đã bán hết HPG", mã nằm ở "Đã đóng (1)" |
 | TC23 | Route cron | Gọi `/api/cron/check-prices` không có / có `CRON_SECRET` | Không có: **401**; có kèm `force=1`: trả JSON có `checked` |
 | TC24 | Responsive | Mở các trang ở chiều rộng 375px | Không tràn ngang |
+| TC25 | Giá thị trường lúc tạo mã | Tạo CTG mua 34.000 × 100 (giá thị trường 30.950) | Phí tự điền **5.100**; giá hiện tại **30.950**, nhãn "Giá cập nhật"; giá vốn TB **34.051**; lãi/lỗ **−9,3%** |
+| TC26 | Không lấy được giá | Tạo FPT mua 100.000 × 100 (không có giá) | Giá hiện tại **100.000**, nhãn "Giá lúc mua" |
+| TC27 | Phí, thuế tự tính | Ở CTG, nhập lệnh mua rồi bán 31.000 × 100 | Phí mua **4.650**; phí bán **4.650**, thuế bán **3.100** |
+| TC28 | Cron cập nhật giá | Gọi route cron kèm `force=1` | `checked` = 2, cập nhật **CTG**, thiếu giá **FPT** |
+| TC29 | Điện thoại: Ghi lệnh trong sheet | Màn 390px, bấm "Ghi lệnh", rồi Esc | Sheet ẩn khi chưa mở; mở ra là popup "Ghi lệnh mua / bán" có form; Esc thì đóng |
+| TC30 | Điện thoại: Sửa kế hoạch trong sheet | Bấm "Sửa kế hoạch", rồi nút đóng | Popup "Sửa kế hoạch"; nút "Lưu kế hoạch" luôn nằm trong màn hình (dính đáy); nút đóng hoạt động |
+| TC31 | Desktop giữ bố cục cũ | Màn 1440px mở trang chi tiết | Form ghi lệnh hiện sẵn, không có popup nào mở, không có nút mở sheet |
+| TC37 | SEO | Khi bật `APP_PASSWORD`, gọi `/robots.txt`, `/sitemap.xml`, `/opengraph-image`, `/apple-icon`, `/manifest.webmanifest` không kèm cookie; xem thẻ meta | Đều trả 200 đúng loại file; robots cho phép `/login`, chặn phần còn lại; trang đăng nhập có ảnh xem trước, canonical, không noindex; trang tổng quan có `noindex, nofollow` |
+| TC33 | Menu ☰ trên điện thoại | Màn 390px, bấm ☰, chọn "Cảnh báo" | Không còn thanh nav hiện sẵn; drawer "Menu" mở; chuyển sang `/alerts` thì drawer tự đóng |
+| TC32 | Biểu đồ tổng quan | Ở `/`, đổi Giá / Tài sản / Theo mã, mở "Xem dạng bảng" | Có tiêu đề "Biểu đồ danh mục", chú thích có mã đang giữ và "Vốn đang rót"; bảng có dữ liệu; khung thời gian đúng 1D 1W 1M 3M 6M 1Y; 1D không có nến thì báo "Chưa có dữ liệu trong phiên" |
+| TC34 | Độ rộng trang | Màn 1440px, mở `/`, `/alerts`, `/settings`, `/positions/new` | Cả 4 trang rộng bằng nhau |
+
+## Unit test bổ sung (`fees.test.ts`)
+
+| Nhóm | Nội dung |
+|---|---|
+| Phí mặc định | Phí mua/bán 0,15%, thuế bán 0,1%; 21.000 × 1.000 → phí 31.500; 31.000 × 100 → phí bán 4.650, thuế 3.100; 21.050 × 100 → phí 3.158 (làm tròn) |
+| Giá vốn, lãi/lỗ | CTG 34.000 × 100 phí 5.100 → giá vốn 34.051; ở giá 30.950 lỗ 317.838đ (**−9,33%**); hòa vốn 34.136; bán 36.000 (phí 5.400, thuế 3.600) lãi chốt 185.900; lệnh ghi phí 0 thì giá vốn đúng 34.000 |
+| Giờ trong phiên | Thứ Hai: 8:59 ✗, 9:00 ✓, 11:30 ✓, 11:31 ✗, 12:00 ✗, 13:00 ✓, 15:00 ✓, 15:01 ✗; thứ Bảy, Chủ nhật ✗; tính đúng theo giờ VN dù máy ở múi giờ khác |
+
+## Unit test biểu đồ (`portfolio.test.ts`)
+
+| Nội dung |
+|---|
+| Chuỗi giá trị danh mục bắt đầu từ ngày mua đầu tiên, mỗi phiên có giá đóng cửa là một điểm, điểm cuối là hôm nay theo giá hiện tại |
+| Giá trị = số cổ đang giữ × giá đóng cửa; vốn gồm phí mua; không có giá đóng cửa thì dùng giá khớp gần nhất |
+| Bán bớt thì giá trị và vốn giảm theo, bán hết thì mã rời khỏi biểu đồ; nhiều mã cộng dồn, cùng mã mở lại gộp chung |
+| Lịch sử giá các mã đang giữ không phụ thuộc ngày mua (xem được cả mã vừa mua), điểm hôm nay theo giá hiện tại |
+| Khung thời gian tròn theo lịch (ngày 25/10/2026): 1W từ 19/10, 1M từ 1/10, 3M từ 1/8, 6M từ 1/5, 1Y từ 1/11/2025; lùi qua năm trước đúng; nến trong phiên chỉ lấy phiên gần nhất, mã chưa khớp thì giữ giá mốc trước |
+
+## Thông báo Telegram (`notify.test.ts`)
+
+Chạy thật luồng lấy giá → so với kế hoạch → lưu cảnh báo → gửi Telegram trên database tạm, giá giả lập, Telegram giả (ghi lại tin gửi đi).
+Số liệu: HPG mua 21.000 × 1.000 (giá vốn 21.031,5), DCA −10% ≤ 18.900, DCA −10% ≤ 17.000, chốt lời +10% ≥ 23.150 bán 30%.
+
+| ID | Tình huống | Kết quả mong đợi |
+|---|---|---|
+| N01 | Giá 18.900 chạm nấc DCA 1 | 1 cảnh báo, nấc sang "Đã nhắc", 1 tin: "📉 HPG 18.900 … chạm nấc DCA -10,0%: mua 1.000 cp … Giá vốn sau DCA ≈ 19.980" |
+| N02 | Giá 19.000 chưa chạm | Không cảnh báo, không gửi |
+| N03 | Kiểm tra lại nhiều lần ở vùng giá đã nhắc | Chỉ 1 tin (mỗi nấc nhắc 1 lần) |
+| N04 | Giá 23.150 chạm chốt lời 1 | Tin "🎯 HPG 23.150 chạm nấc chốt lời 1 … bán 300 cp, còn lại 700 cp … Lãi ≈ …" |
+| N05 | Giá rơi thẳng xuống 16.900 qua 2 nấc DCA | 2 cảnh báo, gộp trong 1 tin |
+| N06 | HPG chạm DCA và FPT chạm chốt lời cùng lúc | 1 tin chứa cả hai mã |
+| N07 | Nấc đã bỏ qua / đã làm | Không nhắc |
+| N08 | Mã đã đóng | Không kiểm tra |
+| N09 | Nhập giá tay chạm nấc | Gửi tin ngay |
+| N10 | Chưa cấu hình Telegram | Cảnh báo vẫn lưu trên web, trạng thái "skipped" |
+| N11 | Telegram trả lỗi 500 | Cảnh báo vẫn lưu, trạng thái "failed" |
+| N12 | Có `APP_URL` | Tin kết thúc bằng link `/alerts` |
+| N13 | Không lấy được giá | Báo thiếu giá, không cảnh báo |
+| N14 | Khôi phục nấc đã nhắc rồi giá chạm lại | Nhắc lại |
+| N15 | Nấc 1 đã khớp ở 18.900 | Nấc 2 không nhắc ở 17.050, nhắc ở 17.000 |
+
+Gửi thật vào chat của bạn (`npm run test:telegram`, đọc `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` từ môi trường): L1 chạm DCA, L2 chạm chốt lời, L3 rơi qua 2 nấc DCA và mã khác chạm chốt lời cùng lúc (1 tin gộp 3 cảnh báo).
+Cắt lỗ và trailing stop không có test vì giao diện không còn ô nhập nên không bao giờ kích hoạt.

@@ -19,7 +19,7 @@ import { formatPrice, todayVN } from "@/lib/format";
 import { orderLevels } from "@/lib/data";
 import { EXCHANGES } from "@/lib/market";
 import { parseIntInput } from "@/lib/parse";
-import { lookupSymbol } from "@/lib/prices";
+import { fetchPrices, lookupSymbol } from "@/lib/prices";
 import { dcaLevelErrors, firstError, priceError, tpLevelErrors, tradeErrors } from "@/lib/validate";
 import { sendTelegram } from "@/lib/telegram";
 
@@ -147,9 +147,18 @@ export async function createPosition(_: ActionState, formData: FormData): Promis
     return { error: `Bạn đã có vị thế ${symbol} đang mở. Hãy vào mã đó và bấm "Thêm lệnh".` };
   }
 
+  // Giá thị trường lúc tạo (không phải giá mua), nguồn giá lỗi thì tạm dùng giá mua
+  const marketPrice = (await fetchPrices([symbol])).prices.get(symbol);
   const [position] = await db
     .insert(positions)
-    .values({ symbol, exchange, thesis, lastPrice: trade.price, peakPrice: trade.price })
+    .values({
+      symbol,
+      exchange,
+      thesis,
+      lastPrice: marketPrice ?? trade.price,
+      lastPriceAt: marketPrice ? new Date() : null,
+      peakPrice: marketPrice ?? trade.price,
+    })
     .returning({ id: positions.id });
   await db.insert(transactions).values({ positionId: position.id, side: "buy", ...trade });
   if (levels.length > 0) {
@@ -243,8 +252,8 @@ export async function addTransaction(_: ActionState, formData: FormData): Promis
   await requireAuth();
   const positionId = parseIntInput(formData.get("positionId"));
   const side = formData.get("side") === "sell" ? "sell" : "buy";
-  const levelId = parseIntInput(formData.get("levelId"));
-  const alertId = parseIntInput(formData.get("alertId"));
+  const formLevelId = parseIntInput(formData.get("levelId"));
+  const formAlertId = parseIntInput(formData.get("alertId"));
   if (!positionId) return { error: "Thiếu mã vị thế." };
   const trade = parseTrade(formData);
   if (typeof trade === "string") return { error: trade };
@@ -252,6 +261,15 @@ export async function addTransaction(_: ActionState, formData: FormData): Promis
   const db = await getDb();
   const [position] = await db.select().from(positions).where(eq(positions.id, positionId));
   if (!position) return { error: "Không tìm thấy vị thế." };
+  // Nấc và cảnh báo gửi lên từ form phải thuộc đúng vị thế này
+  const [level] = formLevelId
+    ? await db.select({ id: planLevels.id }).from(planLevels).where(and(eq(planLevels.id, formLevelId), eq(planLevels.positionId, positionId)))
+    : [];
+  const [alert] = formAlertId
+    ? await db.select({ id: alerts.id }).from(alerts).where(and(eq(alerts.id, formAlertId), eq(alerts.positionId, positionId)))
+    : [];
+  const levelId = level?.id ?? null;
+  const alertId = alert?.id ?? null;
   const txs = await db.select().from(transactions).where(eq(transactions.positionId, positionId));
   const holding = computeHolding(txs);
   const tradeError = firstError(

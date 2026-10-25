@@ -18,12 +18,12 @@ const KIND: Record<AlertRow["kind"], { label: string; tone: "up" | "down" | "war
 
 export default function AlertsPage({ searchParams }: PageProps<"/alerts">) {
   return (
-    <div className="mx-auto max-w-3xl">
+    <>
       <PageHeader title="Cảnh báo" subtitle="Khi giá chạm nấc, cảnh báo hiện ở đây và gửi qua Telegram" />
       <Suspense fallback={<PageSkeleton />}>
         <AlertsList searchParams={searchParams} />
       </Suspense>
-    </div>
+    </>
   );
 }
 
@@ -148,7 +148,7 @@ function TabLink({
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition",
+        "flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium motion-ui",
         active ? "bg-surface text-fg shadow-sm" : "text-muted hover:text-fg",
       )}
     >

@@ -1,8 +1,20 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { BottomNav, BottomNavView, TopNav, TopNavView } from "@/components/app-nav";
+import { MobileMenu, MobileMenuView, TopNav, TopNavView } from "@/components/app-nav";
 import { RefreshPricesButton } from "@/components/position-forms";
 import { countNewAlerts } from "@/lib/data";
+
+/** Chấm đỏ trên nút menu điện thoại khi có cảnh báo mới */
+async function AlertDot() {
+  const count = await countNewAlerts();
+  if (count === 0) return null;
+  return (
+    <span className="block size-2.5 rounded-full bg-down ring-2 ring-bg">
+      <span className="sr-only">Có cảnh báo mới</span>
+    </span>
+  );
+}
 
 async function AlertBadge() {
   const count = await countNewAlerts();
@@ -15,10 +27,18 @@ async function AlertBadge() {
   );
 }
 
+// Các trang trong app chứa danh mục cá nhân: không cho công cụ tìm kiếm index hay theo link
+export const metadata: Metadata = { robots: { index: false, follow: false } };
+
 export default function AppLayout({ children }: LayoutProps<"/">) {
   const badge = (
     <Suspense fallback={null}>
       <AlertBadge />
+    </Suspense>
+  );
+  const dot = (
+    <Suspense fallback={null}>
+      <AlertDot />
     </Suspense>
   );
   return (
@@ -39,13 +59,13 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
             <div className="md:hidden">
               <RefreshPricesButton compact />
             </div>
+            <Suspense fallback={<MobileMenuView badge={null} hasAlerts={null} />}>
+              <MobileMenu badge={badge} hasAlerts={dot} />
+            </Suspense>
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl px-4 pt-5 pb-28 md:px-6 md:pt-8 md:pb-12">{children}</main>
-      <Suspense fallback={<BottomNavView badge={null} />}>
-        <BottomNav badge={badge} />
-      </Suspense>
+      <main className="mx-auto w-full max-w-6xl px-4 pt-5 pb-12 md:px-6 md:pt-8">{children}</main>
     </>
   );
 }

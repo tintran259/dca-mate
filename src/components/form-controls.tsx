@@ -17,6 +17,7 @@ import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/app/actions";
 import { todayVN } from "@/lib/format";
 import { formatIntInput } from "@/lib/parse";
+import { ChevronDownIcon, XIcon } from "./icons";
 import { cn } from "./ui";
 
 /**
@@ -229,7 +230,7 @@ export function Segmented<T extends string>({
           <label
             key={o.value}
             className={cn(
-              "flex min-h-10 cursor-pointer items-center justify-center rounded-lg px-3 text-sm font-medium transition",
+              "flex min-h-10 cursor-pointer items-center justify-center rounded-lg px-2 text-sm font-medium whitespace-nowrap motion-ui sm:px-3",
               active ? (o.activeClass ?? "bg-surface text-fg shadow-sm") : "text-muted hover:text-fg",
             )}
           >
@@ -280,6 +281,9 @@ export function Modal({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  // Giữ nội dung trong lúc chạy hiệu ứng đóng, gỡ ra khi hiệu ứng xong
+  const [mounted, setMounted] = useState(open);
+  if (open && !mounted) setMounted(true);
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
@@ -290,10 +294,13 @@ export function Modal({
     <dialog
       ref={ref}
       onClose={onClose}
+      onTransitionEnd={(e) => {
+        if (e.target === e.currentTarget && !open) setMounted(false);
+      }}
       aria-labelledby={open ? "modal-title" : undefined}
-      className="m-auto w-[min(92vw,28rem)] rounded-2xl border border-line bg-surface p-0 text-fg shadow-2xl backdrop:bg-black/50"
+      className="modal m-auto w-[min(92vw,28rem)] rounded-2xl border border-line bg-surface p-0 text-fg shadow-2xl"
     >
-      {open && (
+      {(open || mounted) && (
         <div className="p-5">
           <h2 id="modal-title" className="mb-3 text-lg font-semibold">
             {title}
@@ -302,5 +309,131 @@ export function Modal({
         </div>
       )}
     </dialog>
+  );
+}
+
+/**
+ * Khối hiện thành bottom sheet trên điện thoại (dưới lg), còn trên desktop nằm trong trang như card thường
+ * (hoặc khối thu gọn được nếu `collapsible`). Nội dung chỉ render 1 lần nên form không bị trùng id.
+ * Mở trên điện thoại bằng <OpenSheetButton targetId={id}>.
+ */
+export function Sheet({
+  id,
+  title,
+  description,
+  defaultOpen = false,
+  collapsible,
+  className,
+  children,
+}: {
+  id: string;
+  title: ReactNode;
+  description?: ReactNode;
+  /** Mở sẵn trên điện thoại, VD vào trang từ "Đã làm, ghi lệnh" */
+  defaultOpen?: boolean;
+  /** Desktop: hiện thành khối <details> thu gọn được, `expanded` là trạng thái ban đầu */
+  collapsible?: { expanded: boolean };
+  className?: string;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    const desktop = window.matchMedia("(width >= 64rem)");
+    if (defaultOpen && !desktop.matches && !dialog.open) openSheet(dialog);
+    // Xoay ngang hoặc kéo rộng cửa sổ khi đang mở: đóng lại để khối về đúng vị trí trong trang
+    const onChange = () => desktop.matches && dialog.open && dialog.close();
+    desktop.addEventListener("change", onChange);
+    return () => desktop.removeEventListener("change", onChange);
+  }, [defaultOpen]);
+
+  const heading = (withId: boolean) => (
+    <div>
+      <h2 id={withId ? `${id}-title` : undefined} className="text-base font-semibold">
+        {title}
+      </h2>
+      {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
+    </div>
+  );
+  const handle = <div aria-hidden className="sheet-only mx-auto -mt-1 mb-3 h-1 w-10 rounded-full bg-line" />;
+  const close = (
+    <form method="dialog" className="sheet-only">
+      <button type="submit" className="btn-ghost btn-sm -mt-1 -mr-2" aria-label="Đóng">
+        <XIcon size={18} />
+      </button>
+    </form>
+  );
+
+  return (
+    <dialog
+      ref={ref}
+      id={id}
+      // Nằm trong trang (desktop, hoặc chưa mở) là một vùng nội dung; chỉ là popup khi mở thành sheet
+      role="region"
+      aria-labelledby={`${id}-title`}
+      className="sheet scroll-mt-20"
+      onClose={(e) => e.currentTarget.setAttribute("role", "region")}
+      // Bấm ra ngoài (vào nền mờ) thì đóng
+      onClick={(e) => e.target === e.currentTarget && e.currentTarget.close()}
+    >
+      {collapsible ? (
+        <details className="group lg:card" open={collapsible.expanded}>
+          <summary className="hidden cursor-pointer list-none items-center justify-between p-4 md:p-5 lg:flex">
+            {heading(false)}
+            <ChevronDownIcon size={20} className="motion-ui text-muted group-open:rotate-180" />
+          </summary>
+          <div className={cn("p-4 md:p-5 lg:border-t lg:border-line", className)}>
+            {handle}
+            <div className="sheet-only mb-3 flex items-start justify-between gap-3">
+              {heading(true)}
+              {close}
+            </div>
+            {children}
+          </div>
+        </details>
+      ) : (
+        <section className={cn("p-4 md:p-5 lg:card", className)}>
+          {handle}
+          <div className="mb-3 flex items-start justify-between gap-3">
+            {heading(true)}
+            {close}
+          </div>
+          {children}
+        </section>
+      )}
+    </dialog>
+  );
+}
+
+function openSheet(dialog: HTMLDialogElement) {
+  // Trên điện thoại khối thu gọn luôn mở hết, tiêu đề đã nằm ở đầu sheet
+  dialog.querySelector("details")?.setAttribute("open", "");
+  dialog.setAttribute("role", "dialog");
+  dialog.showModal();
+}
+
+/** Mở <Sheet> có id tương ứng (chỉ dùng trên điện thoại; desktop đã hiện sẵn trong trang). */
+export function OpenSheetButton({
+  targetId,
+  className,
+  children,
+}: {
+  targetId: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className={className}
+      aria-haspopup="dialog"
+      onClick={() => {
+        const el = document.getElementById(targetId);
+        if (el instanceof HTMLDialogElement && !el.open) openSheet(el);
+      }}
+    >
+      {children}
+    </button>
   );
 }

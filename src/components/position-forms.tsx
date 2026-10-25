@@ -61,7 +61,7 @@ export function PlanForm(props: {
       <input type="hidden" name="positionId" value={positionId} />
       <PlanEditor {...editor} />
       <ResultNotice state={state} />
-      <div className="flex justify-end border-t border-line pt-4">
+      <div className="sheet-footer flex justify-end border-t border-line pt-4">
         <SubmitButton pending={pending} className="btn-primary w-full sm:w-auto sm:min-w-40">
           Lưu kế hoạch
         </SubmitButton>
@@ -437,31 +437,6 @@ export function ThesisForm({ positionId, thesis }: { positionId: number; thesis:
         </div>
       )}
     </form>
-  );
-}
-
-/** Cuộn tới một khối <details> và mở nó ra (link #id thường chỉ cuộn, không mở). */
-export function OpenDetailsButton({
-  targetId,
-  className,
-  children,
-}: {
-  targetId: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      className={className}
-      onClick={() => {
-        const el = document.getElementById(targetId);
-        if (el instanceof HTMLDetailsElement) el.open = true;
-        el?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }}
-    >
-      {children}
-    </button>
   );
 }
 

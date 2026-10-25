@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { isTradingHours, runPriceCheck } from "@/lib/check";
+import { runPriceCheck } from "@/lib/check";
+import { isTradingHours } from "@/lib/market";
 
 // cron-job.org gọi vào đây mỗi 5 phút:
 //   GET /api/cron/check-prices   với header  Authorization: Bearer <CRON_SECRET>

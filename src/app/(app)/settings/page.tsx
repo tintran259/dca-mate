@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { CheckIcon, XIcon } from "@/components/icons";
 import { RefreshPricesButton } from "@/components/position-forms";
 import { CopyField, LogoutButton, TestTelegramButton } from "@/components/settings-actions";
-import { PageHeader, PageSkeleton, Section, cn } from "@/components/ui";
+import { PageHeader, PageSkeleton, Section, WarnText, cn } from "@/components/ui";
 import { authDisabled } from "@/lib/auth";
 import { telegramConfigured } from "@/lib/telegram";
 
@@ -11,12 +11,12 @@ export const metadata = { title: "Cài đặt" };
 
 export default function SettingsPage() {
   return (
-    <div className="mx-auto max-w-3xl">
+    <>
       <PageHeader title="Cài đặt" subtitle="Kết nối thông báo, nguồn giá và lịch kiểm tra tự động" />
       <Suspense fallback={<PageSkeleton />}>
         <Settings />
       </Suspense>
-    </div>
+    </>
   );
 }
 
@@ -43,12 +43,25 @@ async function Settings() {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const origin = process.env.APP_URL ?? `${proto}://${host}`;
+  // APP_URL để trống trong .env thì coi như chưa đặt
+  const origin = process.env.APP_URL || `${proto}://${host}`;
   const hasCron = Boolean(process.env.CRON_SECRET);
   const hasTelegram = telegramConfigured();
+  // `npm run dev` tự kiểm tra giá mỗi 5 phút (src/instrumentation.ts), không cần cron-job.org
+  const localCron = process.env.LOCAL_CRON_ACTIVE === "1";
+  // cron-job.org chạy trên internet, không gọi được địa chỉ trong máy hay mạng nội bộ
+  const privateHost = /^(localhost|127\.|0\.0\.0\.0|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(new URL(origin).hostname);
+  const cronOk = localCron || (hasCron && !privateHost);
+  const cronHint = localCron
+    ? "Đang chạy local: app tự kiểm tra mỗi 5 phút trong phiên, miễn là máy bật và npm run dev đang chạy."
+    : !hasCron
+      ? "Thêm CRON_SECRET để bật route kiểm tra giá định kỳ."
+      : privateHost
+        ? "Đã có CRON_SECRET nhưng app đang chạy ở địa chỉ nội bộ: cron-job.org không gọi tới được. Cần deploy lên Vercel."
+        : "Đã có CRON_SECRET. Tạo job trên cron-job.org theo hướng dẫn bên dưới.";
 
   return (
-    <div className="space-y-4">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
       <Section title="Trạng thái cấu hình">
         <ul className="divide-y divide-line">
           <Check
@@ -59,18 +72,18 @@ async function Settings() {
           <Check
             ok={!authDisabled()}
             label="Mật khẩu đăng nhập"
-            hint={authDisabled() ? "Chưa đặt APP_PASSWORD: ai mở được link cũng xem được (chỉ chấp nhận khi chạy local)." : "Đã bật đăng nhập bằng APP_PASSWORD."}
+            hint={
+              authDisabled()
+                ? "Chưa đặt APP_PASSWORD: ai có link cũng xem và sửa được danh mục. Nên đặt khi deploy lên mạng."
+                : "Đã bật đăng nhập bằng APP_PASSWORD."
+            }
           />
           <Check
             ok={hasTelegram}
             label="Telegram"
             hint={hasTelegram ? "Đã cấu hình bot và chat ID." : "Thêm TELEGRAM_BOT_TOKEN và TELEGRAM_CHAT_ID để nhận cảnh báo."}
           />
-          <Check
-            ok={hasCron}
-            label="Kiểm tra giá tự động"
-            hint={hasCron ? "Đã có CRON_SECRET. Tạo job trên cron-job.org theo hướng dẫn bên dưới." : "Thêm CRON_SECRET để bật route kiểm tra giá định kỳ."}
-          />
+          <Check ok={cronOk} label="Kiểm tra giá tự động" hint={cronHint} />
         </ul>
       </Section>
 
@@ -101,8 +114,14 @@ async function Settings() {
             Trong tab Advanced, thêm header <code className="rounded bg-surface-2 px-1">Authorization: Bearer &lt;CRON_SECRET&gt;</code>.
           </li>
         </ol>
+        {privateHost && (
+          <WarnText className="mb-2">
+            Địa chỉ dưới đây là địa chỉ trong máy/mạng nội bộ nên cron-job.org không gọi được. Deploy lên Vercel rồi dùng
+            URL của Vercel.{localCron && " Trong lúc chạy local, app đã tự kiểm tra giá nên không cần bước này."}
+          </WarnText>
+        )}
         <CopyField value={`${origin}/api/cron/check-prices`} />
-        <p className="hint mt-2">Ngoài giờ giao dịch (T2–T6, 9h–15h) route sẽ tự bỏ qua, nên bạn có thể để job chạy cả ngày.</p>
+        <p className="hint mt-2">Ngoài phiên (ngoài T2–T6 9h–11h30, 13h–15h) route sẽ tự bỏ qua, nên bạn có thể để job chạy cả ngày.</p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <RefreshPricesButton />
           <span className="text-xs text-muted">Chạy kiểm tra ngay (bỏ qua giới hạn giờ giao dịch)</span>

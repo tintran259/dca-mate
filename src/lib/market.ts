@@ -47,3 +47,13 @@ export function sellFee(price: number, quantity: number): number {
 export function sellTax(price: number, quantity: number): number {
   return Math.round(price * quantity * SELL_TAX_RATE);
 }
+
+/** Trong phiên: T2–T6, 9:00–11:30 và 13:00–15:00 giờ Việt Nam (nghỉ trưa thì giá đứng yên). */
+export function isTradingHours(now = new Date()): boolean {
+  const vn = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+  const day = vn.getDay();
+  const minutes = vn.getHours() * 60 + vn.getMinutes();
+  const morning = minutes >= 9 * 60 && minutes <= 11 * 60 + 30;
+  const afternoon = minutes >= 13 * 60 && minutes <= 15 * 60;
+  return day >= 1 && day <= 5 && (morning || afternoon);
+}

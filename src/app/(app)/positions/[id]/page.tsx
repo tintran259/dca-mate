@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { ArrowLeftIcon, ChevronDownIcon } from "@/components/icons";
+import { OpenSheetButton, Sheet } from "@/components/form-controls";
+import { ArrowLeftIcon } from "@/components/icons";
 import {
   DeleteTransactionButton,
   ManualPriceForm,
-  OpenDetailsButton,
   PlanForm,
   ThesisForm,
   TradeForm,
@@ -64,13 +64,13 @@ async function PositionDetailView({ params, searchParams }: PageProps<"/position
   const prefill: TradePrefill | undefined =
     tradeSide === "buy" || tradeSide === "sell"
       ? {
-          side: tradeSide,
-          price: Number(first(sp.price)) || undefined,
-          quantity: Number(first(sp.qty)) || undefined,
-          levelId: Number(first(sp.level)) || undefined,
-          alertId: Number(first(sp.alert)) || undefined,
-          label: "Lệnh này sẽ đánh dấu nấc/cảnh báo là đã làm.",
-        }
+        side: tradeSide,
+        price: Number(first(sp.price)) || undefined,
+        quantity: Number(first(sp.qty)) || undefined,
+        levelId: Number(first(sp.level)) || undefined,
+        alertId: Number(first(sp.alert)) || undefined,
+        label: "Lệnh này sẽ đánh dấu nấc/cảnh báo là đã làm.",
+      }
       : undefined;
   const prefillKey = JSON.stringify(prefill ?? {});
 
@@ -106,12 +106,14 @@ async function PositionDetailView({ params, searchParams }: PageProps<"/position
         </div>
       )}
 
-      {/* Lối tắt trên điện thoại */}
+      {/* Trên điện thoại: Ghi lệnh và Sửa kế hoạch mở thành bottom sheet */}
       <div className="mb-4 grid grid-cols-2 gap-2 lg:hidden">
-        <a href="#trade" className="btn-primary">Ghi lệnh</a>
-        <OpenDetailsButton targetId="plan" className="btn-secondary">
+        <OpenSheetButton targetId="trade" className="btn-primary">
+          Ghi lệnh
+        </OpenSheetButton>
+        <OpenSheetButton targetId="plan" className="btn-secondary">
           Sửa kế hoạch
-        </OpenDetailsButton>
+        </OpenSheetButton>
       </div>
 
       <section className="card mb-4 grid grid-cols-2 gap-4 p-4 sm:grid-cols-4 md:p-5" aria-label="Chỉ số vị thế">
@@ -123,7 +125,7 @@ async function PositionDetailView({ params, searchParams }: PageProps<"/position
         />
         <Stat
           label="Thời gian giữ"
-          value={holding.firstBuyDate ? `${daysBetween(holding.firstBuyDate)} ngày` : "—"}
+          value={!holding.firstBuyDate ? "—" : daysBetween(holding.firstBuyDate) <= 0 ? "Hôm nay" : `${daysBetween(holding.firstBuyDate)} ngày`}
           sub={<span className="text-muted">Từ {formatDate(holding.firstBuyDate)}</span>}
         />
         {holding.realizedPnl !== 0 && (
@@ -208,29 +210,25 @@ async function PositionDetailView({ params, searchParams }: PageProps<"/position
             </Section>
           )}
 
-          <details id="plan" className="card group scroll-mt-20" open={detail.levels.length === 0}>
-            <summary className="flex cursor-pointer list-none items-center justify-between p-4 md:p-5">
-              <div>
-                <h2 className="text-base font-semibold">Sửa kế hoạch</h2>
-                <p className="text-sm text-muted">Nấc DCA và nấc chốt lời</p>
-              </div>
-              <ChevronDownIcon size={20} className="text-muted transition group-open:rotate-180" />
-            </summary>
-            <div className="border-t border-line p-4 md:p-5">
-              <PlanForm
-                key={detail.levels.map((l) => `${l.id}:${l.pct}:${l.status}`).join("|")}
-                positionId={position.id}
-                exchange={position.exchange}
-                firstPrice={holding.firstBuyPrice}
-                quantity={holding.quantity}
-                avgCost={holding.avgCost}
-                totalCost={holding.totalCost}
-                initial={{
-                  levels: detail.levels,
-                }}
-              />
-            </div>
-          </details>
+          <Sheet
+            id="plan"
+            title="Sửa kế hoạch"
+            description="Nấc DCA và nấc chốt lời"
+            collapsible={{ expanded: detail.levels.length === 0 }}
+          >
+            <PlanForm
+              key={detail.levels.map((l) => `${l.id}:${l.pct}:${l.status}`).join("|")}
+              positionId={position.id}
+              exchange={position.exchange}
+              firstPrice={holding.firstBuyPrice}
+              quantity={holding.quantity}
+              avgCost={holding.avgCost}
+              totalCost={holding.totalCost}
+              initial={{
+                levels: detail.levels,
+              }}
+            />
+          </Sheet>
 
           <Section title="Lịch sử lệnh" description={`${detail.transactions.length} lệnh`}>
             <ul className="divide-y divide-line">
@@ -268,7 +266,7 @@ async function PositionDetailView({ params, searchParams }: PageProps<"/position
         </div>
 
         <aside className="space-y-4 lg:sticky lg:top-20">
-          <Section id="trade" title="Ghi lệnh mua / bán">
+          <Sheet id="trade" title="Ghi lệnh mua / bán" defaultOpen={prefill != null}>
             <TradeForm
               key={prefillKey}
               positionId={position.id}
@@ -280,7 +278,7 @@ async function PositionDetailView({ params, searchParams }: PageProps<"/position
                 .filter((l) => l.kind === "tp" && (l.status === "pending" || l.status === "notified") && (l.sellQuantity ?? 0) > 0)
                 .map((l) => ({ levelNo: levelNo.get(l.id) ?? 0, sellPct: l.sellPct ?? 100, quantity: l.sellQuantity!, price: l.trigger }))}
             />
-          </Section>
+          </Sheet>
 
           <Section title="Luận điểm đầu tư" description="Đọc lại trước khi DCA hoặc cắt lỗ">
             <ThesisForm positionId={position.id} thesis={position.thesis} />
