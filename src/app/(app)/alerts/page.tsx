@@ -5,6 +5,8 @@ import { AlertActions, SkipAllAlertsButton, type QuickTrade } from "@/components
 import { Chip, EmptyState, PageHeader, PageSkeleton, cn } from "@/components/ui";
 import { getAlerts, getOpenPositions, type AlertRow } from "@/lib/data";
 import { formatDateTime, formatPrice, formatQty } from "@/lib/format";
+import { FeeRatesProvider } from "@/components/fee-rates";
+import { getFeeRates } from "@/lib/fees";
 
 export const metadata = { title: "Cảnh báo" };
 
@@ -30,7 +32,7 @@ export default function AlertsPage({ searchParams }: PageProps<"/alerts">) {
 type LevelInfo = { no: number; quantity: number };
 
 async function AlertsList({ searchParams }: Pick<PageProps<"/alerts">, "searchParams">) {
-  const [all, views, sp] = await Promise.all([getAlerts(), getOpenPositions(), searchParams]);
+  const [all, views, sp, fees] = await Promise.all([getAlerts(), getOpenPositions(), searchParams, getFeeRates()]);
   const tab = sp.tab === "done" ? "done" : "new";
   const fresh = all.filter((a) => a.status === "new");
   const history = all.filter((a) => a.status !== "new");
@@ -81,6 +83,7 @@ async function AlertsList({ searchParams }: Pick<PageProps<"/alerts">, "searchPa
   }
 
   return (
+    <FeeRatesProvider rates={fees}>
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <nav className="grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1" aria-label="Lọc cảnh báo">
@@ -127,6 +130,7 @@ async function AlertsList({ searchParams }: Pick<PageProps<"/alerts">, "searchPa
         </ul>
       )}
     </div>
+    </FeeRatesProvider>
   );
 }
 

@@ -6,7 +6,8 @@ import * as schema from "./schema";
 // Không dùng transaction tương tác vì driver neon-http không hỗ trợ.
 export type DB = NeonHttpDatabase<typeof schema>;
 
-const globalForDb = globalThis as unknown as { dcaDb?: Promise<DB> };
+// dbKey: DATABASE_URL lúc tạo kết nối. Đổi URL trong .env.local khi đang chạy dev thì mở kết nối mới
+const globalForDb = globalThis as unknown as { dcaDb?: Promise<DB>; dbKey?: string };
 
 async function createDb(): Promise<DB> {
   const url = process.env.DATABASE_URL;
@@ -34,6 +35,11 @@ async function createDb(): Promise<DB> {
 
 export function getDb(): Promise<DB> {
   // Giữ 1 kết nối duy nhất qua các lần hot reload trong lúc dev
+  const key = process.env.DATABASE_URL ?? "";
+  if (globalForDb.dbKey !== key) {
+    globalForDb.dcaDb = undefined;
+    globalForDb.dbKey = key;
+  }
   globalForDb.dcaDb ??= createDb().catch((err) => {
     globalForDb.dcaDb = undefined;
     throw err;

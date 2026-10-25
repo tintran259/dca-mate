@@ -4,10 +4,35 @@ export const EXCHANGES: Exchange[] = ["HOSE", "HNX", "UPCOM"];
 
 export const LOT_SIZE = 100;
 
-// Phí giao dịch mặc định, có thể ghi đè bằng biến môi trường
-export const BUY_FEE_RATE = Number(process.env.NEXT_PUBLIC_BUY_FEE_RATE ?? 0.0015);
-export const SELL_FEE_RATE = Number(process.env.NEXT_PUBLIC_SELL_FEE_RATE ?? 0.0015);
+/** Tỷ lệ phí, thuế (VD 0.0015 = 0,15%). Phí mua/bán đặt trong trang Cài đặt, thuế bán theo luật. */
+export type FeeRates = { buy: number; sell: number; tax: number };
+
 export const SELL_TAX_RATE = 0.001;
+
+/** Khi chưa lưu trong Cài đặt: 0,15% (hoặc theo biến môi trường cũ NEXT_PUBLIC_*_FEE_RATE nếu có) */
+export const DEFAULT_FEES: FeeRates = {
+  buy: Number(process.env.NEXT_PUBLIC_BUY_FEE_RATE || 0.0015),
+  sell: Number(process.env.NEXT_PUBLIC_SELL_FEE_RATE || 0.0015),
+  tax: SELL_TAX_RATE,
+};
+
+/** Phần còn lại sau phí bán và thuế khi bán 1 đồng giá trị */
+export function netSellRate(fees: FeeRates): number {
+  return 1 - fees.sell - fees.tax;
+}
+
+/** Lỗi khi nhập % phí (đơn vị %, VD 0,15). Phí công ty chứng khoán thực tế từ 0% đến dưới 1%. */
+export function feePctError(pct: number | null): string | null {
+  if (pct == null || !Number.isFinite(pct)) return "Nhập % phí, VD 0,15.";
+  if (pct < 0) return "Phí không được âm.";
+  if (pct >= 1) return "Phí phải dưới 1%. Ghi theo %, VD 0,15 nghĩa là 0,15%.";
+  return null;
+}
+
+/** 0.0015 → "0,15%" */
+export function formatRate(rate: number): string {
+  return `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 3 }).format(rate * 100)}%`;
+}
 
 /** Bước giá theo sàn. HOSE: <10k → 10đ, 10k–<50k → 50đ, ≥50k → 100đ. HNX/UPCoM: 100đ. */
 export function tickSize(exchange: Exchange, price: number): number {
@@ -36,16 +61,16 @@ export function roundLot(quantity: number): number {
   return Math.max(LOT_SIZE, Math.floor(quantity / LOT_SIZE) * LOT_SIZE);
 }
 
-export function buyFee(price: number, quantity: number): number {
-  return Math.round(price * quantity * BUY_FEE_RATE);
+export function buyFee(price: number, quantity: number, fees: FeeRates): number {
+  return Math.round(price * quantity * fees.buy);
 }
 
-export function sellFee(price: number, quantity: number): number {
-  return Math.round(price * quantity * SELL_FEE_RATE);
+export function sellFee(price: number, quantity: number, fees: FeeRates): number {
+  return Math.round(price * quantity * fees.sell);
 }
 
-export function sellTax(price: number, quantity: number): number {
-  return Math.round(price * quantity * SELL_TAX_RATE);
+export function sellTax(price: number, quantity: number, fees: FeeRates): number {
+  return Math.round(price * quantity * fees.tax);
 }
 
 /** Trong phiên: T2–T6, 9:00–11:30 và 13:00–15:00 giờ Việt Nam (nghỉ trưa thì giá đứng yên). */

@@ -33,7 +33,7 @@ Danh sách test case và quy tắc tính đang áp dụng: [docs/test-cases.md](
 ## Đưa lên Vercel (miễn phí)
 
 1. **Database:** tạo project trên [neon.tech](https://neon.tech), chọn region Singapore, rồi chép connection string.
-2. Tạo `.env.local` từ `.env.example`, điền `DATABASE_URL`, rồi chạy `npm run db:migrate` để tạo bảng.
+2. Bảng được tạo tự động: mỗi lần deploy, Vercel chạy migration trước khi build (script `vercel-build`). Muốn chạy tay: `DATABASE_URL="..." npm run db:migrate`. Dùng tích hợp Neon có sẵn trên Vercel cũng được, nó tự gắn `DATABASE_URL`.
 3. Đẩy code lên GitHub, import vào Vercel. Khai báo các biến môi trường:
    - `DATABASE_URL`
    - `APP_PASSWORD`: mật khẩu đăng nhập (nên đặt; để trống thì ai có link cũng xem và sửa được)
@@ -58,3 +58,7 @@ Lần lượt thử VPS, SSI iBoard rồi DNSE ([src/lib/prices.ts](src/lib/pric
 - [src/proxy.ts](src/proxy.ts): chặn truy cập khi chưa đăng nhập
 
 Sau khi sửa schema, chạy `npm run db:generate` rồi `npm run db:migrate`.
+
+## Phí giao dịch
+
+Vào **Cài đặt → Phí giao dịch** nhập % phí mua, phí bán theo công ty chứng khoán của bạn (VD 0,15). Không biết % thì dùng ô "Tính từ một lệnh đã khớp": nhập giá trị khớp và số phí trên sổ lệnh. Tỷ lệ này dùng để tự điền phí khi ghi lệnh và tính lãi/lỗ, giá hòa vốn; lệnh đã ghi giữ nguyên phí cũ. Thuế bán 0,1% theo luật.

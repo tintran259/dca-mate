@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { safeEqual } from "@/lib/auth";
 import { runPriceCheck } from "@/lib/check";
 import { isTradingHours } from "@/lib/market";
 
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const auth = request.headers.get("authorization");
   const provided = auth?.replace(/^Bearer\s+/i, "") ?? request.nextUrl.searchParams.get("secret");
-  if (!secret || provided !== secret) {
+  if (!secret || !provided || !safeEqual(provided, secret)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

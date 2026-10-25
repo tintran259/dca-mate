@@ -13,7 +13,10 @@ import {
   type PositionInput,
   type TxInput,
 } from "./calc";
-import { ceilToTick, floorToTick, roundLot, tickSize } from "./market";
+import { ceilToTick, floorToTick, roundLot, tickSize, type FeeRates } from "./market";
+
+// Phí cố định 0,15% mua/bán, thuế 0,1%: không phụ thuộc biến môi trường khi chạy test
+const FEES: FeeRates = { buy: 0.0015, sell: 0.0015, tax: 0.001 };
 
 const position: PositionInput = {
   symbol: "HPG",
@@ -107,7 +110,7 @@ describe("kế hoạch DCA", () => {
   });
 
   it("mô phỏng giá vốn khi khớp lần lượt các nấc", () => {
-    const rows = simulateDca(position, holding, levels);
+    const rows = simulateDca(position, holding, levels, FEES);
     expect(rows).toHaveLength(2);
     expect(rows[0].avgCost).toBeCloseTo((25_000_000 + 23_250_000 * 1.0015) / 2_000);
     expect(rows[1].totalQuantity).toBe(3_500);
@@ -116,25 +119,25 @@ describe("kế hoạch DCA", () => {
   });
 
   it("đánh dấu nấc vượt giới hạn vốn", () => {
-    const rows = simulateDca({ ...position, maxCapital: 50_000_000 }, holding, levels);
+    const rows = simulateDca({ ...position, maxCapital: 50_000_000 }, holding, levels, FEES);
     expect(rows[0].overCapital).toBe(false);
     expect(rows[1].overCapital).toBe(true);
   });
 
   it("nhắc DCA khi giá chạm nấc, bỏ qua nấc chưa chạm", () => {
-    const { events } = evaluatePrice(position, holding, levels, 23_200);
+    const { events } = evaluatePrice(position, holding, levels, 23_200, FEES);
     expect(events.map((e) => e.levelId)).toEqual([1]);
     expect(events[0].message).toContain("mua 1.000 cp");
   });
 
   it("không nhắc lại nấc đã nhắc", () => {
     const notified = [{ ...levels[0], status: "notified" as const }, levels[1]];
-    expect(evaluatePrice(position, holding, notified, 23_200).events).toHaveLength(0);
+    expect(evaluatePrice(position, holding, notified, 23_200, FEES).events).toHaveLength(0);
   });
 
   it("thủng cắt lỗ thì chỉ nhắc cắt lỗ, không nhắc DCA", () => {
     const p = { ...position, stopLossPct: -10 };
-    const { events } = evaluatePrice(p, holding, levels, 22_000);
+    const { events } = evaluatePrice(p, holding, levels, 22_000, FEES);
     expect(events.map((e) => e.kind)).toEqual(["stop"]);
   });
 });
@@ -150,21 +153,21 @@ describe("chốt lời và trailing stop", () => {
   });
 
   it("nhắc chốt lời khi giá vượt mức", () => {
-    const { events } = evaluatePrice(position, holding, [level(3, "tp", 10)], 22_050);
+    const { events } = evaluatePrice(position, holding, [level(3, "tp", 10)], 22_050, FEES);
     expect(events[0].kind).toBe("tp");
     expect(events[0].message).toContain("bán 300 cp, còn lại 700 cp");
   });
 
   it("trailing stop chỉ nhắc khi đang lãi và giảm đủ từ đỉnh", () => {
     const p = { ...position, trailingPct: 8, peakPrice: 26_000 };
-    expect(evaluatePrice(p, holding, [], 23_900).events.map((e) => e.kind)).toEqual(["trail"]);
-    expect(evaluatePrice(p, holding, [], 24_500).events).toHaveLength(0);
+    expect(evaluatePrice(p, holding, [], 23_900, FEES).events.map((e) => e.kind)).toEqual(["trail"]);
+    expect(evaluatePrice(p, holding, [], 24_500, FEES).events).toHaveLength(0);
     // Đã nhắc ở đỉnh này rồi thì không nhắc lại
-    expect(evaluatePrice({ ...p, trailNotifiedPeak: 26_000 }, holding, [], 23_900).events).toHaveLength(0);
+    expect(evaluatePrice({ ...p, trailNotifiedPeak: 26_000 }, holding, [], 23_900, FEES).events).toHaveLength(0);
   });
 
   it("giá hòa vốn đã gồm phí và thuế bán", () => {
-    expect(breakEvenPrice(20_000)).toBeCloseTo(20_000 / 0.9975);
+    expect(breakEvenPrice(20_000, FEES)).toBeCloseTo(20_000 / 0.9975);
   });
 });
 
@@ -175,7 +178,7 @@ describe("DCA nối tiếp theo giá mua của nấc trước", () => {
   const levels = [level(1, "dca", -7), level(2, "dca", -10)];
 
   it("nấc sau tính % trên giá mua của nấc trước", () => {
-    const [r1, r2] = simulateDca(p, holding, levels);
+    const [r1, r2] = simulateDca(p, holding, levels, FEES);
     expect(r1.price).toBe(23_250);
     expect(r1.avgCost).toBeCloseTo((25_000_000 + 23_250_000 * 1.0015) / 2_000);
     expect(r2.basePrice).toBe(23_250);
@@ -184,14 +187,14 @@ describe("DCA nối tiếp theo giá mua của nấc trước", () => {
 
   it("ví dụ 21.000, mỗi nấc -10%", () => {
     const h = computeHolding([buy(1, 21_000, 1_000)]);
-    const rows = simulateDca(p, h, [level(1, "dca", -10), level(2, "dca", -10), level(3, "dca", -10)]);
+    const rows = simulateDca(p, h, [level(1, "dca", -10), level(2, "dca", -10), level(3, "dca", -10)], FEES);
     // 18.900 × 0,9 = 17.010 → làm tròn xuống bước giá 50 của HOSE = 17.000
     expect(rows.map((r) => r.price)).toEqual([18_900, 17_000, 15_300]);
   });
 
   it("nấc đầu tiên còn lại tính từ giá khớp của nấc DCA đã làm", () => {
     const h = computeHolding([buy(1, 25_000, 1_000), buy(2, 23_250, 1_000, "2026-02-01")]);
-    const [r] = simulateDca(p, h, [level(1, "dca", -7, { status: "done", filledPrice: 23_250 }), level(2, "dca", -10)]);
+    const [r] = simulateDca(p, h, [level(1, "dca", -7, { status: "done", filledPrice: 23_250 }), level(2, "dca", -10)], FEES);
     expect(r.basePrice).toBe(23_250);
     expect(r.baseIsFilled).toBe(true);
     expect(r.price).toBe(20_900);
@@ -200,7 +203,7 @@ describe("DCA nối tiếp theo giá mua của nấc trước", () => {
   it("mua thêm ngoài kế hoạch: chưa khớp nấc nào thì tính từ giá vốn TB", () => {
     // Mua 21.000 rồi mua thêm 21.200 (không phải nấc DCA)
     const h = computeHolding([buy(1, 21_000, 2_000), buy(2, 21_200, 1_200, "2026-02-01")]);
-    const [r1, r2] = simulateDca(p, h, [level(1, "dca", -10), level(2, "dca", -10)]);
+    const [r1, r2] = simulateDca(p, h, [level(1, "dca", -10), level(2, "dca", -10)], FEES);
     expect(r1.basePrice).toBeCloseTo(h.avgCost);
     expect(r1.baseLevelId).toBeNull();
     expect(r1.price).toBe(floorToTick("HOSE", h.avgCost * 0.9));
@@ -208,22 +211,22 @@ describe("DCA nối tiếp theo giá mua của nấc trước", () => {
   });
 
   it("giữ đúng thứ tự người dùng đặt, kể cả khi % không tăng dần", () => {
-    const rows = simulateDca(p, holding, [level(1, "dca", -10), level(2, "dca", -5)]);
+    const rows = simulateDca(p, holding, [level(1, "dca", -10), level(2, "dca", -5)], FEES);
     expect(rows.map((r) => r.levelId)).toEqual([1, 2]);
     expect(rows[0].price).toBe(22_500);
     expect(rows[1].price).toBe(21_350); // 22.500 × 0,95 = 21.375 → 21.350
   });
 
   it("bỏ qua nấc đã bỏ qua, nấc kế tiếp tính từ giá vốn thực tế", () => {
-    const rows = simulateDca(p, holding, [level(1, "dca", -7, { status: "skipped" }), level(2, "dca", -10)]);
+    const rows = simulateDca(p, holding, [level(1, "dca", -7, { status: "skipped" }), level(2, "dca", -10)], FEES);
     expect(rows).toHaveLength(1);
     expect(rows[0].price).toBe(22_500);
   });
 
   it("chỉ nhắc nấc 2 khi giá chạm mức tính theo chuỗi", () => {
     const notified = [{ ...levels[0], status: "notified" as const }, levels[1]];
-    expect(evaluatePrice(p, holding, notified, 21_000).events).toHaveLength(0);
-    expect(evaluatePrice(p, holding, notified, 20_900).events.map((e) => e.levelId)).toEqual([2]);
+    expect(evaluatePrice(p, holding, notified, 21_000, FEES).events).toHaveLength(0);
+    expect(evaluatePrice(p, holding, notified, 20_900, FEES).events.map((e) => e.levelId)).toEqual([2]);
   });
 });
 
@@ -232,7 +235,7 @@ describe("chốt lời nối tiếp", () => {
 
   it("chưa DCA: tính từ giá gốc, nấc sau tính từ nấc trước", () => {
     const h = computeHolding([buy(1, 21_000, 1_000)]);
-    const chain = tpChain("HOSE", h.avgCost, tp);
+    const chain = tpChain("HOSE", h.avgCost, tp, FEES);
     expect([chain.get(11)?.price, chain.get(12)?.price]).toEqual([23_100, 27_750]);
     expect(chain.get(12)?.basePrice).toBe(23_100);
   });
@@ -240,29 +243,29 @@ describe("chốt lời nối tiếp", () => {
   it("đã DCA: tính từ giá vốn TB sau DCA, số cổ bán theo khối lượng mới", () => {
     const h = computeHolding([buy(1, 21_000, 1_000), buy(2, 18_900, 1_000, "2026-02-01")]);
     expect(h.avgCost).toBe(19_950);
-    const chain = tpChain("HOSE", h.avgCost, [level(11, "tp", 10, { sellPct: 50 }), level(12, "tp", 20, { sellPct: 100 })], h);
+    const chain = tpChain("HOSE", h.avgCost, [level(11, "tp", 10, { sellPct: 50 }), level(12, "tp", 20, { sellPct: 100 })], FEES, h);
     // 19.950 × 1,1 = 21.945 → 21.950; 21.950 × 1,2 = 26.340 → 26.350
     expect([chain.get(11)?.price, chain.get(12)?.price]).toEqual([21_950, 26_350]);
     expect([chain.get(11)?.sellQuantity, chain.get(12)?.sellQuantity]).toEqual([1_000, 1_000]);
   });
 
   it("bỏ qua nấc đã bỏ qua", () => {
-    const chain = tpChain("HOSE", 21_000, [{ ...tp[0], status: "skipped" as const }, tp[1]]);
+    const chain = tpChain("HOSE", 21_000, [{ ...tp[0], status: "skipped" as const }, tp[1]], FEES);
     expect(chain.get(12)?.price).toBe(25_200);
   });
 
   it("nhắc nấc chốt lời 2 theo giá trong chuỗi", () => {
     const h = computeHolding([buy(1, 21_000, 1_000)]);
     const levels = [{ ...tp[0], status: "done" as const }, tp[1]];
-    expect(evaluatePrice(position, h, levels, 27_700).events).toHaveLength(0);
-    expect(evaluatePrice(position, h, levels, 27_750).events.map((e) => e.levelId)).toEqual([12]);
+    expect(evaluatePrice(position, h, levels, 27_700, FEES).events).toHaveLength(0);
+    expect(evaluatePrice(position, h, levels, 27_750, FEES).events.map((e) => e.levelId)).toEqual([12]);
   });
 });
 
 describe("lãi/lỗ tạm tính khi khớp hết nấc DCA", () => {
   it("tính tại giá nấc cuối, đã trừ phí và thuế bán", () => {
     const h = computeHolding([buy(1, 25_000, 1_000)]);
-    const [row] = simulateDca(position, h, [level(1, "dca", -10)]);
+    const [row] = simulateDca(position, h, [level(1, "dca", -10)], FEES);
     const capital = 25_000_000 + 22_500_000 * 1.0015;
     expect(row.totalCapital).toBeCloseTo(capital);
     expect(row.pnlAtPrice).toBeCloseTo(2_000 * 22_500 * 0.9975 - capital);
@@ -279,7 +282,7 @@ describe("số cổ bán, còn lại và tiền lời mỗi nấc chốt lời",
 
   it("% bán tính trên số cổ còn lại sau nấc trước", () => {
     const h = computeHolding([buy(1, 21_000, 1_000)]);
-    const steps = [...tpChain("HOSE", h.avgCost, plan, h).values()];
+    const steps = [...tpChain("HOSE", h.avgCost, plan, FEES, h).values()];
     // 30% của 1.000 = 300; 50% của 700 = 350 → lô chẵn 300; 100% của 400 = 400
     expect(steps.map((s) => s.sellQuantity)).toEqual([300, 300, 400]);
     expect(steps.map((s) => s.remainingAfter)).toEqual([700, 400, 0]);
@@ -293,7 +296,7 @@ describe("số cổ bán, còn lại và tiền lời mỗi nấc chốt lời",
       { id: 2, side: "sell", tradeDate: "2026-03-01", price: 23_100, quantity: 300, fee: 0, tax: 0 },
     ]);
     const done = [{ ...plan[0], status: "done" as const }, plan[1], plan[2]];
-    const steps = tpChain("HOSE", 21_000, done, h);
+    const steps = tpChain("HOSE", 21_000, done, FEES, h);
     expect(steps.get(11)?.sellQuantity).toBe(0);
     expect(steps.get(12)?.sellQuantity).toBe(300);
     expect(steps.get(13)?.sellQuantity).toBe(400);
@@ -302,7 +305,7 @@ describe("số cổ bán, còn lại và tiền lời mỗi nấc chốt lời",
 
   it("không có nấc 100% thì giữ lại phần còn lại", () => {
     const h = computeHolding([buy(1, 21_000, 1_000)]);
-    const steps = tpChain("HOSE", 21_000, [level(11, "tp", 10, { sellPct: 50 })], h);
+    const steps = tpChain("HOSE", 21_000, [level(11, "tp", 10, { sellPct: 50 })], FEES, h);
     expect(steps.get(11)?.sellQuantity).toBe(500);
     expect(steps.get(11)?.remainingAfter).toBe(500);
   });
@@ -318,7 +321,7 @@ describe("đối chiếu lệnh tay với kế hoạch", () => {
   ];
   // Đã mua 21.000 × 1.000 và nấc 1 khớp ở 18.900 → giá vốn 19.950, nấc 2 chờ ở 17.000
   const h = computeHolding([buy(1, 21_000, 1_000), buy(2, 18_900, 1_000, "2026-02-01")]);
-  const hints = planHints(position, h, plan);
+  const hints = planHints(position, h, plan, FEES);
 
   it("tóm tắt kế hoạch hiện tại", () => {
     expect(hints.dca).toEqual({ base: 18_900, next: { levelId: 2, levelNo: 2, price: 17_000 } });
@@ -356,7 +359,7 @@ describe("đối chiếu lệnh tay với kế hoạch", () => {
 
   it("nấc chốt lời đã bán dùng giá bán thực tế làm mốc cho nấc sau", () => {
     const done = plan.map((l) => (l.id === 11 ? { ...l, status: "done" as const, filledPrice: 21_000 } : l));
-    const steps = tpChain("HOSE", h.avgCost, done, h);
+    const steps = tpChain("HOSE", h.avgCost, done, FEES, h);
     expect(steps.get(11)?.price).toBe(21_000);
     expect(steps.get(12)?.price).toBe(25_200); // 21.000 × 1,2
   });

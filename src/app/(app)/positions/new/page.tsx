@@ -1,7 +1,10 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { FeeRatesProvider } from "@/components/fee-rates";
 import { ArrowLeftIcon } from "@/components/icons";
 import { NewPositionForm } from "@/components/new-position-form";
-import { PageHeader } from "@/components/ui";
+import { PageHeader, Skeleton } from "@/components/ui";
+import { getFeeRates } from "@/lib/fees";
 
 export const metadata = { title: "Thêm mã" };
 
@@ -17,7 +20,18 @@ export default function NewPositionPage() {
         title="Thêm mã mới"
         subtitle="Ghi lệnh mua đầu tiên và đặt kế hoạch cho mã này"
       />
-      <NewPositionForm />
+      <Suspense fallback={<Skeleton className="h-96" />}>
+        <FormWithFees />
+      </Suspense>
     </>
+  );
+}
+
+/** Đọc tỷ lệ phí trong Cài đặt để form tự điền phí mua đúng */
+async function FormWithFees() {
+  return (
+    <FeeRatesProvider rates={await getFeeRates()}>
+      <NewPositionForm />
+    </FeeRatesProvider>
   );
 }

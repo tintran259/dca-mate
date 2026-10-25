@@ -96,6 +96,15 @@ export const alerts = pgTable(
   (t) => [index("alerts_status_idx").on(t.status)],
 );
 
+// Cài đặt chung của app: 1 dòng duy nhất (id = 1)
+export const appSettings = pgTable("app_settings", {
+  id: integer("id").primaryKey().default(1),
+  // Tỷ lệ phí của công ty chứng khoán, VD 0.0015 = 0,15%. null = dùng mặc định
+  buyFeeRate: doublePrecision("buy_fee_rate"),
+  sellFeeRate: doublePrecision("sell_fee_rate"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type Position = typeof positions.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type PlanLevel = typeof planLevels.$inferSelect;

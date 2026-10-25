@@ -17,7 +17,8 @@ import type { Exchange } from "@/db/schema";
 import { classifyTrade, type PlanHints, type TradeFit } from "@/lib/calc";
 import { priceError, tradeErrors } from "@/lib/validate";
 import { formatMoney, formatPrice, formatQty, trendClass } from "@/lib/format";
-import { buyFee, sellFee, sellTax } from "@/lib/market";
+import { buyFee, formatRate, sellFee, sellTax } from "@/lib/market";
+import { useFeeRates } from "./fee-rates";
 import { parseIntInput } from "@/lib/parse";
 import {
   DateInput,
@@ -129,8 +130,9 @@ export function TradeForm({
 
   const p = parseIntInput(price) ?? 0;
   const q = parseIntInput(quantity) ?? 0;
-  const autoFee = p && q ? (side === "buy" ? buyFee(p, q) : sellFee(p, q)) : 0;
-  const autoTax = p && q && side === "sell" ? sellTax(p, q) : 0;
+  const fees = useFeeRates();
+  const autoFee = p && q ? (side === "buy" ? buyFee(p, q, fees) : sellFee(p, q, fees)) : 0;
+  const autoTax = p && q && side === "sell" ? sellTax(p, q, fees) : 0;
   const feeValue = fee ?? (autoFee ? String(autoFee) : "");
   const taxValue = tax ?? (autoTax ? String(autoTax) : "");
   const errors = tradeErrors({
@@ -298,7 +300,7 @@ export function TradeForm({
           <Field label="Ngày" htmlFor="tx-date">
             <DateInput id="tx-date" name="tradeDate" required />
           </Field>
-          <Field label="Phí" htmlFor="tx-fee" error={errors.fee}>
+          <Field label={`Phí (${formatRate(side === "buy" ? fees.buy : fees.sell)})`} htmlFor="tx-fee" error={errors.fee}>
             <IntInput
               id="tx-fee"
               name="fee"
@@ -310,7 +312,7 @@ export function TradeForm({
             />
           </Field>
           {side === "sell" && (
-            <Field label="Thuế bán (0,1%)" htmlFor="tx-tax" className="col-span-2 sm:col-span-1" error={errors.tax}>
+            <Field label={`Thuế bán (${formatRate(fees.tax)})`} htmlFor="tx-tax" className="col-span-2 sm:col-span-1" error={errors.tax}>
               <IntInput
                 id="tx-tax"
                 name="tax"
@@ -478,8 +480,9 @@ function QuickTradeForm({
   const isBuy = trade.side === "buy";
   const p = parseIntInput(price) ?? 0;
   const q = parseIntInput(quantity) ?? 0;
-  const fee = p && q ? (isBuy ? buyFee(p, q) : sellFee(p, q)) : 0;
-  const tax = p && q && !isBuy ? sellTax(p, q) : 0;
+  const fees = useFeeRates();
+  const fee = p && q ? (isBuy ? buyFee(p, q, fees) : sellFee(p, q, fees)) : 0;
+  const tax = p && q && !isBuy ? sellTax(p, q, fees) : 0;
   const errors = tradeErrors({
     exchange: trade.exchange,
     side: trade.side,

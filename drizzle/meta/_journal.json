@@ -36,6 +36,13 @@
       "when": 1792748071730,
       "tag": "0004_transaction_level",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792934730944,
+      "tag": "0005_fee_settings",
+      "breakpoints": true
     }
   ]
 }

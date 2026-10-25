@@ -2,8 +2,8 @@
 
 Hai lớp test:
 
-- **Unit test** (`npm test`, 100 test): giá vốn, chuỗi DCA, chuỗi chốt lời, bước giá, lô 100 (`calc.test.ts`); kiểm tra ô nhập (`validate.test.ts`); phí, thuế, lãi/lỗ sau phí và giờ trong phiên (`fees.test.ts`); dữ liệu biểu đồ tổng quan (`portfolio.test.ts`); luồng thông báo Telegram (`notify.test.ts`).
-- **E2E** (`npm run test:e2e`, 35 case): chạy app thật trên trình duyệt Chrome với database tạm, đi qua các luồng dưới đây. Không đụng tới dữ liệu trong `.data/`. Build vào `.next-e2e` (tsconfig riêng `tsconfig.e2e.json`) nên chạy được trong lúc `npm run dev` đang mở mà không làm hỏng cache của dev server. Thêm `-- --no-build` để chạy lại test mà không build. Giá thị trường dùng giá giả lập `MOCK_PRICES="HPG:21000,CTG:30950"` (FPT cố ý không có giá) để kết quả không đổi theo thị trường.
+- **Unit test** (`npm test`, 103 test): giá vốn, chuỗi DCA, chuỗi chốt lời, bước giá, lô 100 (`calc.test.ts`); kiểm tra ô nhập (`validate.test.ts`); phí, thuế, lãi/lỗ sau phí và giờ trong phiên (`fees.test.ts`); dữ liệu biểu đồ tổng quan (`portfolio.test.ts`); luồng thông báo Telegram (`notify.test.ts`).
+- **E2E** (`npm run test:e2e`, 36 case): chạy app thật trên trình duyệt Chrome với database tạm, đi qua các luồng dưới đây. Không đụng tới dữ liệu trong `.data/`. Build vào `.next-e2e` (tsconfig riêng `tsconfig.e2e.json`) nên chạy được trong lúc `npm run dev` đang mở mà không làm hỏng cache của dev server. Thêm `-- --no-build` để chạy lại test mà không build. Giá thị trường dùng giá giả lập `MOCK_PRICES="HPG:21000,CTG:30950"` (FPT cố ý không có giá) để kết quả không đổi theo thị trường.
 
 Số liệu chung cho các case E2E: mã **HPG (HOSE)**, mua đầu **21.000 × 1.000 cp**, phí tự tính 0,15% (31.500đ), nên giá vốn TB là 21.031,5.
 Kế hoạch: 3 nấc DCA −10% (mua 1.000 / 1.000 / 1.500 cp), mẫu chốt lời "3 nấc" (+10% bán 30%, +20% bán 50%, +30% bán 100%).
@@ -29,7 +29,7 @@ Kế hoạch: 3 nấc DCA −10% (mua 1.000 / 1.000 / 1.500 cp), mẫu chốt l�
 | Chốt lời nấc 1 | Tính % tăng từ **giá vốn TB hiện tại** |
 | Chốt lời nấc sau | Tính từ giá nấc trước |
 | % bán | Tính trên số cổ còn lại sau nấc trước; 100% là bán hết |
-| Phí, thuế | Phí mua, phí bán mặc định 0,15% (`NEXT_PUBLIC_BUY_FEE_RATE`, `NEXT_PUBLIC_SELL_FEE_RATE`), thuế bán 0,1% cố định; tự điền theo giá trị lệnh, làm tròn tới đồng, sửa tay được. Giá vốn và lãi đã chốt dùng phí đã ghi trong lệnh; lãi/lỗ tạm tính, giá hòa vốn, mô phỏng dùng tỷ lệ |
+| Phí, thuế | Phí mua, phí bán đặt trong Cài đặt (mặc định 0,15%), thuế bán 0,1% cố định; tự điền theo giá trị lệnh, làm tròn tới đồng, sửa tay được. Giá vốn và lãi đã chốt dùng phí đã ghi trong lệnh; lãi/lỗ tạm tính, giá hòa vốn, mô phỏng dùng tỷ lệ |
 | Giá hiện tại lúc tạo mã | Lấy giá thị trường; không lấy được thì tạm dùng giá mua, nhãn "Giá lúc mua". Tra mã về muộn không ghi đè giá đã nhập |
 | Giờ trong phiên | T2–T6, 9:00–11:30 và 13:00–15:00 giờ VN; ngoài phiên route cron bỏ qua (trừ `force=1`) |
 | Làm tròn | Giá DCA làm tròn xuống, giá chốt lời làm tròn lên theo bước giá; khối lượng làm tròn xuống lô 100 |
@@ -70,6 +70,7 @@ Kế hoạch: 3 nấc DCA −10% (mua 1.000 / 1.000 / 1.500 cp), mẫu chốt l�
 | TC30 | Điện thoại: Sửa kế hoạch trong sheet | Bấm "Sửa kế hoạch", rồi nút đóng | Popup "Sửa kế hoạch"; nút "Lưu kế hoạch" luôn nằm trong màn hình (dính đáy); nút đóng hoạt động |
 | TC31 | Desktop giữ bố cục cũ | Màn 1440px mở trang chi tiết | Form ghi lệnh hiện sẵn, không có popup nào mở, không có nút mở sheet |
 | TC37 | SEO | Khi bật `APP_PASSWORD`, gọi `/robots.txt`, `/sitemap.xml`, `/opengraph-image`, `/apple-icon`, `/manifest.webmanifest` không kèm cookie; xem thẻ meta | Đều trả 200 đúng loại file; robots cho phép `/login`, chặn phần còn lại; trang đăng nhập có ảnh xem trước, canonical, không noindex; trang tổng quan có `noindex, nofollow` |
+| TC38 | Đổi % phí trong Cài đặt | Nhập phí mua 1,5; dùng ô tính từ lệnh khớp (20.000 ÷ 20.000.000); phí bán 0,2; lưu; mở form thêm mã | Báo "Phí phải dưới 1%", khóa nút lưu; tính ra 0,1% và điền vào phí mua; lưu xong form thêm mã tự điền phí 21.000 cho 21.000 × 1.000 và ghi "tự tính 0,1%" |
 | TC33 | Menu ☰ trên điện thoại | Màn 390px, bấm ☰, chọn "Cảnh báo" | Không còn thanh nav hiện sẵn; drawer "Menu" mở; chuyển sang `/alerts` thì drawer tự đóng |
 | TC32 | Biểu đồ tổng quan | Ở `/`, đổi Giá / Tài sản / Theo mã, mở "Xem dạng bảng" | Có tiêu đề "Biểu đồ danh mục", chú thích có mã đang giữ và "Vốn đang rót"; bảng có dữ liệu; khung thời gian đúng 1D 1W 1M 3M 6M 1Y; 1D không có nến thì báo "Chưa có dữ liệu trong phiên" |
 | TC34 | Độ rộng trang | Màn 1440px, mở `/`, `/alerts`, `/settings`, `/positions/new` | Cả 4 trang rộng bằng nhau |

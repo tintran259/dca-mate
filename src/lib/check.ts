@@ -3,6 +3,8 @@ import { eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { alerts, planLevels, positions } from "@/db/schema";
 import { evaluatePrice } from "./calc";
+import { getFeeRates } from "./fees";
+import type { FeeRates } from "./market";
 import { getOpenPositions, type PositionView } from "./data";
 import { fetchPrices } from "./prices";
 import { sendTelegram } from "./telegram";
@@ -17,10 +19,10 @@ export type CheckSummary = {
 };
 
 /** Ghi giá mới cho 1 vị thế, so với kế hoạch, lưu cảnh báo. Trả về nội dung các cảnh báo mới. */
-async function applyPrice(view: PositionView, price: number): Promise<string[]> {
+async function applyPrice(view: PositionView, price: number, fees: FeeRates): Promise<string[]> {
   const db = await getDb();
   const { position, holding } = view;
-  const { events, peakPrice } = evaluatePrice(position, holding, view.levels, price);
+  const { events, peakPrice } = evaluatePrice(position, holding, view.levels, price, fees);
   const now = new Date();
 
   await db
@@ -77,7 +79,7 @@ export async function runPriceCheck(): Promise<CheckSummary> {
   };
   if (views.length === 0) return summary;
 
-  const { prices, errors } = await fetchPrices(views.map((v) => v.position.symbol));
+  const [{ prices, errors }, fees] = await Promise.all([fetchPrices(views.map((v) => v.position.symbol)), getFeeRates()]);
   summary.errors = errors;
 
   for (const view of views) {
@@ -87,7 +89,7 @@ export async function runPriceCheck(): Promise<CheckSummary> {
       continue;
     }
     summary.updated.push(view.position.symbol);
-    summary.alerts.push(...(await applyPrice(view, price)));
+    summary.alerts.push(...(await applyPrice(view, price, fees)));
   }
 
   summary.telegram = await notify(summary.alerts);
@@ -98,6 +100,6 @@ export async function runPriceCheck(): Promise<CheckSummary> {
 export async function applyManualPrice(positionId: number, price: number) {
   const view = (await getOpenPositions()).find((v) => v.position.id === positionId);
   if (!view) return { alerts: [] as string[], telegram: "none" as const };
-  const messages = await applyPrice(view, price);
+  const messages = await applyPrice(view, price, await getFeeRates());
   return { alerts: messages, telegram: await notify(messages) };
 }

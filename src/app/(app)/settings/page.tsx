@@ -2,9 +2,10 @@ import { headers } from "next/headers";
 import { Suspense } from "react";
 import { CheckIcon, XIcon } from "@/components/icons";
 import { RefreshPricesButton } from "@/components/position-forms";
-import { CopyField, LogoutButton, TestTelegramButton } from "@/components/settings-actions";
+import { CopyField, FeeSettingsForm, LogoutButton, TestTelegramButton } from "@/components/settings-actions";
 import { PageHeader, PageSkeleton, Section, WarnText, cn } from "@/components/ui";
 import { authDisabled } from "@/lib/auth";
+import { getFeeRates } from "@/lib/fees";
 import { telegramConfigured } from "@/lib/telegram";
 
 export const metadata = { title: "Cài đặt" };
@@ -46,6 +47,7 @@ async function Settings() {
   // APP_URL để trống trong .env thì coi như chưa đặt
   const origin = process.env.APP_URL || `${proto}://${host}`;
   const hasCron = Boolean(process.env.CRON_SECRET);
+  const fees = await getFeeRates();
   const hasTelegram = telegramConfigured();
   // `npm run dev` tự kiểm tra giá mỗi 5 phút (src/instrumentation.ts), không cần cron-job.org
   const localCron = process.env.LOCAL_CRON_ACTIVE === "1";
@@ -85,6 +87,10 @@ async function Settings() {
           />
           <Check ok={cronOk} label="Kiểm tra giá tự động" hint={cronHint} />
         </ul>
+      </Section>
+
+      <Section title="Phí giao dịch" description="Theo công ty chứng khoán của bạn, dùng để tự điền phí và tính lãi/lỗ, giá hòa vốn">
+        <FeeSettingsForm fees={fees} />
       </Section>
 
       <Section title="Thông báo Telegram" description="Cảnh báo được gửi ngay khi giá chạm nấc">

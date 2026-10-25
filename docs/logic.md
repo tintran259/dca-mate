@@ -185,3 +185,10 @@ Theo thứ tự đã làm:
 - Ảnh xem trước khi gửi link: `src/app/opengraph-image.tsx` (1200×630). Icon iPhone: `src/app/apple-icon.tsx` (PNG 180×180).
 - Chỉ trang đăng nhập được index (`robots.txt` cho phép `/login`, `sitemap.xml` chỉ có `/login`). Các trang trong app chứa danh mục cá nhân nên gắn `noindex, nofollow` và bị chặn trong robots, phòng khi để trống `APP_PASSWORD`.
 - `proxy.ts` bỏ qua robots, sitemap, ảnh Open Graph, icon để công cụ tìm kiếm và mạng xã hội đọc được cả khi bật mật khẩu.
+
+## Phí giao dịch
+
+- Lưu trong bảng `app_settings` (1 dòng), nhập ở Cài đặt theo %, phải từ 0 đến dưới 1%. Chưa lưu thì dùng 0,15% (hoặc `NEXT_PUBLIC_BUY_FEE_RATE`, `NEXT_PUBLIC_SELL_FEE_RATE` nếu có). Thuế bán 0,1% cố định.
+- Mọi hàm tính có dùng phí (`breakEvenPrice`, `unrealizedPnl`, `tpChain`, `simulateDca`, `planHints`, `evaluatePrice`, `buyFee`, `sellFee`, `sellTax`) nhận tỷ lệ phí làm tham số bắt buộc. Server đọc từ database (`getFeeRates`), trình duyệt nhận qua `FeeRatesProvider`, nên form và server luôn tính giống nhau.
+- Giá vốn và lãi đã chốt dùng số phí đã ghi trong từng lệnh, nên đổi tỷ lệ không làm đổi lệnh cũ.
+- VPS và các công ty chứng khoán không có API công khai trả về biểu phí; phí còn tùy gói của từng tài khoản. Vì vậy phí do người dùng nhập, có ô tính % từ một lệnh đã khớp.

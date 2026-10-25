@@ -16,7 +16,8 @@ import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import type { PortfolioHistory } from "@/lib/data";
 import { periodStart, type Period } from "@/lib/portfolio";
 import { formatMoney, formatPct, formatPrice, trendClass } from "@/lib/format";
-import { SELL_FEE_RATE, SELL_TAX_RATE } from "@/lib/market";
+import { netSellRate } from "@/lib/market";
+import { useFeeRates } from "./fee-rates";
 import { Segmented } from "./form-controls";
 import { cn } from "./ui";
 
@@ -41,8 +42,6 @@ const VIEW_INFO: Record<View, { label: string; description: string }> = {
   symbol: { label: "Theo mã", description: "Giá trị từng mã đang giữ" },
 };
 
-// Lãi/lỗ tính giống ô tổng quan: bán hết ở giá đó, đã trừ phí và thuế bán
-const NET_RATE = 1 - SELL_FEE_RATE - SELL_TAX_RATE;
 
 type Series = { key: string; color: string };
 /** `x` là ngày (YYYY-MM-DD) ở các khung theo ngày, hoặc giờ (HH:mm) ở khung 1D */
@@ -70,6 +69,8 @@ export function PortfolioChart({ points, prices, holdings, intraday, symbols }: 
   const views: View[] = symbols.length > 1 ? ["price", "total", "symbol"] : ["price", "total"];
   const activeView = views.includes(view) ? view : "total";
   const intradayMode = range === "1d";
+  // Lãi/lỗ tính giống ô tổng quan: bán hết ở giá đó, đã trừ phí và thuế bán
+  const netRate = netSellRate(useFeeRates());
 
   const series: Series[] = useMemo(() => {
     const keys = symbols.length > SLOTS ? [...symbols.slice(0, SLOTS), OTHER] : symbols;
@@ -83,7 +84,7 @@ export function PortfolioChart({ points, prices, holdings, intraday, symbols }: 
     const shown = new Set(symbols.slice(0, SLOTS));
     const keyOf = (sym: string) => (shown.has(sym) ? sym : OTHER);
     const toRow = (x: string, value: number, capital: number, bySymbol: Record<string, number>): Row => {
-      const row: Row = { x, value, capital, pnl: value * NET_RATE - capital };
+      const row: Row = { x, value, capital, pnl: value * netRate - capital };
       for (const s of series) row[s.key] = 0;
       for (const [sym, v] of Object.entries(bySymbol)) row[keyOf(sym)] = Number(row[keyOf(sym)]) + v;
       return row;
@@ -102,7 +103,7 @@ export function PortfolioChart({ points, prices, holdings, intraday, symbols }: 
     const last = points.at(-1)?.date;
     const from = last ? periodStart(range as Period, last) : "";
     return points.filter((p) => p.date >= from).map((p) => toRow(p.date, p.value, p.capital, p.bySymbol));
-  }, [points, symbols, series, range, intradayMode, intraday, holdings]);
+  }, [points, symbols, series, range, intradayMode, intraday, holdings, netRate]);
 
   // % biến động giá so với đầu kỳ (Giá): đưa các mã về cùng một mốc để so trên một trục.
   // Khung 1D so với giá tham chiếu (đóng cửa phiên trước), như bảng giá chứng khoán.

@@ -11,6 +11,7 @@ import {
   TradeForm,
   type TradePrefill,
 } from "@/components/position-forms";
+import { FeeRatesProvider } from "@/components/fee-rates";
 import { PriceLadder } from "@/components/price-ladder";
 import { Chip, Notice, PageSkeleton, Section, Stat, cn } from "@/components/ui";
 import { getPositionDetail } from "@/lib/data";
@@ -76,6 +77,7 @@ async function PositionDetailView({ params, searchParams }: PageProps<"/position
 
 
   return (
+    <FeeRatesProvider rates={detail.fees}>
     <div>
       <Link href="/" className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-fg">
         <ArrowLeftIcon size={16} /> Tổng quan
@@ -307,5 +309,6 @@ async function PositionDetailView({ params, searchParams }: PageProps<"/position
         </aside>
       </div>
     </div>
+    </FeeRatesProvider>
   );
 }

@@ -533,6 +533,37 @@ try {
     expect(robotsMeta, "noindex, nofollow", "trang tổng quan");
   });
 
+  await tc("TC38", "Đổi % phí trong Cài đặt: form tự điền phí theo tỷ lệ mới", async () => {
+    await page.goto(BASE + "/settings");
+    await page.locator("#buyFee").waitFor();
+    // Gõ nhầm 1,5 → báo lỗi ngay, nút lưu bị khóa
+    await page.locator("#buyFee").fill("1,5");
+    await page.getByText("Phí phải dưới 1%").waitFor();
+    expect(await page.getByRole("button", { name: "Lưu phí" }).isDisabled(), true, "khóa nút lưu khi lỗi");
+    // Tính % từ lệnh đã khớp: 46.425 ÷ 30.950.000 = 0,15%; rồi 20.000 ÷ 20.000.000 = 0,1% cho phí mua
+    await page.getByText("Không biết % phí?").click();
+    await page.locator("#orderValue").fill("20000000");
+    await page.locator("#orderFee").fill("20000");
+    await page.getByText("Tỷ lệ phí: 0,1%").waitFor();
+    await page.getByRole("button", { name: "Dùng cho phí mua" }).click();
+    expect(await page.locator("#buyFee").inputValue(), "0,1", "điền % vừa tính vào phí mua");
+    await page.locator("#sellFee").fill("0,2");
+    await page.getByRole("button", { name: "Lưu phí" }).click();
+    await page.getByText("Đã lưu phí").waitFor();
+    // Form thêm mã dùng tỷ lệ mới
+    await page.goto(BASE + "/positions/new");
+    await page.locator("#price").fill("21000");
+    await page.locator("#quantity").fill("1000");
+    expect(await digits("#fee"), "21000", "phí mua 0,1% của 21.000.000");
+    await page.getByText("tự tính 0,1% giá trị lệnh").waitFor();
+    // Trả lại 0,15% để không ảnh hưởng case khác
+    await page.goto(BASE + "/settings");
+    await page.locator("#buyFee").fill("0,15");
+    await page.locator("#sellFee").fill("0,15");
+    await page.getByRole("button", { name: "Lưu phí" }).click();
+    await page.getByText("Đã lưu phí").waitFor();
+  });
+
   await tc("TC33", "Điện thoại: menu ☰ mở drawer, chuyển trang thì tự đóng", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(BASE + "/");

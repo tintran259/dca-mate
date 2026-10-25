@@ -1,9 +1,8 @@
 import type { Exchange } from "@/db/schema";
 import { formatMoney, formatPct, formatPrice, formatQty } from "./format";
 import {
-  BUY_FEE_RATE,
-  SELL_FEE_RATE,
-  SELL_TAX_RATE,
+  netSellRate,
+  type FeeRates,
   ceilToTick,
   floorToTick,
   roundLot,
@@ -106,15 +105,15 @@ export function computeHolding(txs: TxInput[]): Holding {
 }
 
 /** Giá bán tối thiểu để hòa vốn sau phí bán và thuế. */
-export function breakEvenPrice(avgCost: number): number {
-  return avgCost / (1 - SELL_FEE_RATE - SELL_TAX_RATE);
+export function breakEvenPrice(avgCost: number, fees: FeeRates): number {
+  return avgCost / netSellRate(fees);
 }
 
 /** Lãi/lỗ tạm tính nếu bán hết ở giá `price`, đã trừ phí và thuế bán. */
-export function unrealizedPnl(holding: Holding, price: number): number {
+export function unrealizedPnl(holding: Holding, price: number, fees: FeeRates): number {
   if (holding.quantity === 0) return 0;
   const gross = price * holding.quantity;
-  return gross * (1 - SELL_FEE_RATE - SELL_TAX_RATE) - holding.totalCost;
+  return gross * netSellRate(fees) - holding.totalCost;
 }
 
 /** Giá kích hoạt của 1 nấc theo trạng thái hiện tại. */
@@ -159,6 +158,7 @@ export function tpChain(
   exchange: Exchange,
   startPrice: number | null,
   levels: Pick<LevelInput, "id" | "kind" | "pct" | "sellPct" | "status" | "filledPrice">[],
+  fees: FeeRates,
   holding?: { quantity: number; avgCost: number },
 ): Map<number, TpStep> {
   const out = new Map<number, TpStep>();
@@ -167,7 +167,7 @@ export function tpChain(
 
   const tps = levels.filter((l) => l.kind === "tp" && l.status !== "skipped" && l.pct > 0);
   const avgCost = holding?.avgCost ?? 0;
-  const netRate = 1 - SELL_FEE_RATE - SELL_TAX_RATE;
+  const netRate = netSellRate(fees);
 
   // Nấc đã bán thì số còn lại đã nằm trong khối lượng đang giữ
   let remaining = holding?.quantity ?? 0;
@@ -256,6 +256,7 @@ export function simulateDca(
   position: PositionInput,
   holding: Holding,
   levels: LevelInput[],
+  fees: FeeRates,
 ): SimulationRow[] {
   const stop = stopLossPrice(position, holding);
   let quantity = holding.quantity;
@@ -273,13 +274,13 @@ export function simulateDca(
     if (!basePrice) break;
     const price = floorToTick(position.exchange, basePrice * (1 + level.pct / 100));
     const qty = level.quantity ?? 0;
-    const cost = price * qty * (1 + BUY_FEE_RATE);
+    const cost = price * qty * (1 + fees.buy);
     const quantityBefore = quantity;
     const capitalBefore = capital;
     quantity += qty;
     capital += cost;
     const avgCost = quantity > 0 ? capital / quantity : 0;
-    const breakEven = breakEvenPrice(avgCost);
+    const breakEven = breakEvenPrice(avgCost, fees);
     rows.push({
       levelId: level.id,
       pct: level.pct,
@@ -298,8 +299,8 @@ export function simulateDca(
       breakEven,
       dropFromFirstPct: holding.firstBuyPrice ? (price / holding.firstBuyPrice - 1) * 100 : null,
       recoveryPct: (breakEven / price - 1) * 100,
-      pnlAtPrice: quantity * price * (1 - SELL_FEE_RATE - SELL_TAX_RATE) - capital,
-      pnlPctAtPrice: capital ? ((quantity * price * (1 - SELL_FEE_RATE - SELL_TAX_RATE)) / capital - 1) * 100 : 0,
+      pnlAtPrice: quantity * price * netSellRate(fees) - capital,
+      pnlPctAtPrice: capital ? ((quantity * price * netSellRate(fees)) / capital - 1) * 100 : 0,
       overCapital: position.maxCapital != null && capital > position.maxCapital,
       belowStop: stop != null && price <= stop,
     });
@@ -323,14 +324,14 @@ export type PlanHints = {
 };
 
 /** Tóm tắt kế hoạch hiện tại để đối chiếu một lệnh mua/bán tay. `levels` theo đúng thứ tự chuỗi. */
-export function planHints(position: PositionInput, holding: Holding, levels: LevelInput[]): PlanHints {
+export function planHints(position: PositionInput, holding: Holding, levels: LevelInput[], fees: FeeRates): PlanHints {
   const levelNo = (kind: "dca" | "tp", id: number) => levels.filter((l) => l.kind === kind).findIndex((l) => l.id === id) + 1;
 
-  const dcaRows = simulateDca(position, holding, levels);
+  const dcaRows = simulateDca(position, holding, levels, fees);
   const lastFilled = levels.filter((l) => l.kind === "dca" && l.status === "done" && l.filledPrice).at(-1);
   const dcaNext = dcaRows[0];
 
-  const steps = tpChain(position.exchange, holding.avgCost, levels, holding);
+  const steps = tpChain(position.exchange, holding.avgCost, levels, fees, holding);
   const tpNextLevel = levels.find((l) => l.kind === "tp" && isActive(l) && steps.has(l.id));
   const tpNextStep = tpNextLevel ? steps.get(tpNextLevel.id)! : null;
   const lastStep = [...steps.values()].at(-1);
@@ -399,6 +400,7 @@ export function evaluatePrice(
   holding: Holding,
   levels: LevelInput[],
   price: number,
+  fees: FeeRates,
 ): Evaluation {
   const events: PriceEvent[] = [];
   const sym = position.symbol;
@@ -420,11 +422,11 @@ export function evaluatePrice(
   }
 
   if (!stopHit) {
-    for (const row of simulateDca(position, holding, levels)) {
+    for (const row of simulateDca(position, holding, levels, fees)) {
       const level = levels.find((l) => l.id === row.levelId);
       if (level?.status !== "pending" || price > row.price) continue;
       // Ước tính lại theo giá thực tế lúc chạm nấc
-      const newCapital = row.capitalBefore + price * row.quantity * (1 + BUY_FEE_RATE);
+      const newCapital = row.capitalBefore + price * row.quantity * (1 + fees.buy);
       const newAvg = newCapital / (row.quantityBefore + row.quantity);
       const over = position.maxCapital != null && newCapital > position.maxCapital;
       events.push({
@@ -439,12 +441,12 @@ export function evaluatePrice(
     }
   }
 
-  const tps = tpChain(position.exchange, holding.avgCost, levels, holding);
+  const tps = tpChain(position.exchange, holding.avgCost, levels, fees, holding);
   for (const level of levels) {
     const step = tps.get(level.id);
     if (!step || level.status !== "pending" || price < step.price || step.sellQuantity === 0) continue;
     const qty = step.sellQuantity;
-    const profit = (price * (1 - SELL_FEE_RATE - SELL_TAX_RATE) - holding.avgCost) * qty;
+    const profit = (price * netSellRate(fees) - holding.avgCost) * qty;
     events.push({
       kind: "tp",
       levelId: level.id,
@@ -459,7 +461,7 @@ export function evaluatePrice(
   const peakPrice = Math.max(position.peakPrice ?? price, price);
   if (position.trailingPct) {
     const trailPrice = floorToTick(position.exchange, peakPrice * (1 - position.trailingPct / 100));
-    const inProfit = peakPrice > breakEvenPrice(holding.avgCost);
+    const inProfit = peakPrice > breakEvenPrice(holding.avgCost, fees);
     if (inProfit && price <= trailPrice && position.trailNotifiedPeak !== peakPrice) {
       events.push({
         kind: "trail",

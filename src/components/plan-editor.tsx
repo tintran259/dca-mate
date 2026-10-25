@@ -19,6 +19,7 @@ import { DecimalInput, FieldError, IntInput, invalidProps } from "./form-control
 import { dcaLevelErrors, tpLevelErrors } from "@/lib/validate";
 import { PlusIcon, TrashIcon } from "./icons";
 import { Chip, WarnText, cn } from "./ui";
+import { useFeeRates } from "./fee-rates";
 
 type Row = {
   key: string;
@@ -166,6 +167,7 @@ export function PlanEditor({
 
   const effAvg = avgCost && avgCost > 0 ? avgCost : firstPrice;
 
+  const fees = useFeeRates();
   const simulation = useMemo(() => {
     if (!firstPrice || !quantity) return [];
     const position: PositionInput = {
@@ -182,8 +184,8 @@ export function PlanEditor({
       ...computeHolding([{ id: 1, side: "buy", tradeDate: "2000-01-01", price: firstPrice, quantity, fee: 0, tax: 0 }]),
       ...(totalCost && avgCost ? { totalCost, avgCost } : {}),
     };
-    return simulateDca(position, holding, levels);
-  }, [firstPrice, quantity, exchange, totalCost, avgCost, levels]);
+    return simulateDca(position, holding, levels, fees);
+  }, [firstPrice, quantity, exchange, totalCost, avgCost, levels, fees]);
 
   const chainByKey = new Map<string, SimulationRow>();
   rows.forEach((r, i) => {
@@ -193,7 +195,7 @@ export function PlanEditor({
 
   // Chốt lời nối tiếp: nấc 1 tính từ giá vốn TB hiện tại, nấc sau từ nấc trước
   const tpHolding = effAvg && quantity ? { quantity, avgCost: effAvg } : null;
-  const tpSteps = tpChain(exchange, tpHolding?.avgCost ?? null, levels, tpHolding ?? undefined);
+  const tpSteps = tpChain(exchange, tpHolding?.avgCost ?? null, levels, fees, tpHolding ?? undefined);
   const tpByKey = new Map<string, TpStep>();
   rows.forEach((r, i) => {
     const step = tpSteps.get(levels[i].id);
@@ -288,7 +290,7 @@ export function PlanEditor({
           rows={tpRows}
           uid={uid}
           steps={tpByKey}
-          breakEven={tpHolding ? breakEvenPrice(tpHolding.avgCost) : null}
+          breakEven={tpHolding ? breakEvenPrice(tpHolding.avgCost, fees) : null}
           onChange={update}
           onRemove={remove}
         />

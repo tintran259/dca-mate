@@ -15,10 +15,11 @@ import {
 } from "@/lib/auth";
 import { classifyTrade, computeHolding, planHints } from "@/lib/calc";
 import { applyManualPrice, runPriceCheck } from "@/lib/check";
+import { getFeeRates, saveFeeRates } from "@/lib/fees";
 import { formatPrice, todayVN } from "@/lib/format";
 import { orderLevels } from "@/lib/data";
-import { EXCHANGES } from "@/lib/market";
-import { parseIntInput } from "@/lib/parse";
+import { EXCHANGES, feePctError } from "@/lib/market";
+import { parseDecimalInput, parseIntInput } from "@/lib/parse";
 import { fetchPrices, lookupSymbol } from "@/lib/prices";
 import { dcaLevelErrors, firstError, priceError, tpLevelErrors, tradeErrors } from "@/lib/validate";
 import { sendTelegram } from "@/lib/telegram";
@@ -288,7 +289,7 @@ export async function addTransaction(_: ActionState, formData: FormData): Promis
     const levels = orderLevels(await db.select().from(planLevels).where(eq(planLevels.positionId, positionId)));
     const kind = side === "buy" ? "dca" : "tp";
     const label = side === "buy" ? "DCA" : "chốt lời";
-    const fit = classifyTrade(planHints(position, holding, levels), side, trade.price);
+    const fit = classifyTrade(planHints(position, holding, levels, await getFeeRates()), side, trade.price);
     if (fit.kind === "match") {
       doneLevelId = fit.level.levelId;
       planLevelId = fit.level.levelId;
@@ -451,6 +452,18 @@ export async function lookupSymbolAction(symbol: string) {
   await requireAuth();
   if (!/^[A-Za-z0-9]{3,10}$/.test(symbol)) return null;
   return lookupSymbol(symbol);
+}
+
+/** Lưu % phí mua/bán của công ty chứng khoán (nhập theo %, VD 0,15) */
+export async function saveFeeSettings(_: ActionState, formData: FormData): Promise<ActionState> {
+  await requireAuth();
+  const buy = parseDecimalInput(formData.get("buyFee"));
+  const sell = parseDecimalInput(formData.get("sellFee"));
+  const error = feePctError(buy) ?? feePctError(sell);
+  if (error) return { error };
+  await saveFeeRates(buy! / 100, sell! / 100);
+  refreshAll();
+  return { ok: "Đã lưu phí. Các lệnh mới và số liệu dự tính dùng tỷ lệ này; lệnh cũ giữ nguyên phí đã ghi." };
 }
 
 export async function sendTestTelegram(): Promise<ActionState> {

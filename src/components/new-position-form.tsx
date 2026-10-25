@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createPosition, lookupSymbolAction } from "@/app/actions";
 import type { Exchange } from "@/db/schema";
 import { formatMoney, formatPrice } from "@/lib/format";
-import { EXCHANGES, buyFee } from "@/lib/market";
+import { EXCHANGES, buyFee, formatRate } from "@/lib/market";
+import { useFeeRates } from "./fee-rates";
 import { parseIntInput } from "@/lib/parse";
 import { tradeErrors } from "@/lib/validate";
 import { DateInput, Field, IntInput, Segmented, Spinner, SubmitButton, invalidProps, useFormAction } from "./form-controls";
@@ -27,7 +28,8 @@ export function NewPositionForm() {
 
   const priceNum = parseIntInput(price) ?? 0;
   const qtyNum = parseIntInput(quantity) ?? 0;
-  const autoFee = priceNum && qtyNum ? buyFee(priceNum, qtyNum) : 0;
+  const fees = useFeeRates();
+  const autoFee = priceNum && qtyNum ? buyFee(priceNum, qtyNum, fees) : 0;
   const feeValue = feeTouched ? fee : autoFee ? String(autoFee) : "";
   const total = priceNum * qtyNum + (parseIntInput(feeValue) ?? 0);
   const errors = tradeErrors({
@@ -170,7 +172,7 @@ export function NewPositionForm() {
               />
             </Field>
             <p className="hint col-span-2 -mt-1">
-              Giá theo đồng (VD 25.000). Phí {feeTouched ? "đã nhập tay" : "tự tính 0,15% giá trị lệnh, có thể sửa"}.
+              Giá theo đồng (VD 25.000). Phí {feeTouched ? "đã nhập tay" : `tự tính ${formatRate(fees.buy)} giá trị lệnh, có thể sửa`}.
             </p>
           </div>
 

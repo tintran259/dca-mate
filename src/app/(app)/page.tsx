@@ -7,6 +7,8 @@ import { RefreshPricesButton } from "@/components/position-forms";
 import { EmptyState, Notice, PageHeader, PageSkeleton, Skeleton, Stat, cn } from "@/components/ui";
 import { countNewAlerts, getClosedPositions, getOpenPositions, getPortfolioHistory } from "@/lib/data";
 import { formatDateTime, formatMoney, formatPct, formatPrice, trendClass } from "@/lib/format";
+import { FeeRatesProvider } from "@/components/fee-rates";
+import { getFeeRates } from "@/lib/fees";
 
 export const metadata = { title: "Tổng quan" };
 
@@ -192,6 +194,10 @@ async function Dashboard() {
 }
 
 async function PortfolioSection() {
-  const history = await getPortfolioHistory();
-  return <PortfolioChart {...history} />;
+  const [history, fees] = await Promise.all([getPortfolioHistory(), getFeeRates()]);
+  return (
+    <FeeRatesProvider rates={fees}>
+      <PortfolioChart {...history} />
+    </FeeRatesProvider>
+  );
 }

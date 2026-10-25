@@ -27,7 +27,9 @@ import {
   type PlanHints,
   type SimulationRow,
 } from "./calc";
+import { getFeeRates } from "./fees";
 import { todayVN } from "./format";
+import type { FeeRates } from "./market";
 import {
   buildIntraday,
   buildPortfolioHistory,
@@ -69,12 +71,12 @@ export function orderLevels<T extends { id: number; sortOrder: number }>(levels:
   return [...levels].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
 }
 
-function buildView(position: Position, txs: Transaction[], levels: PlanLevel[]): PositionView {
+function buildView(position: Position, txs: Transaction[], levels: PlanLevel[], fees: FeeRates): PositionView {
   const holding = computeHolding(txs);
   const price = position.lastPrice;
   const ordered = orderLevels(levels);
-  const chain = new Map(simulateDca(position, holding, ordered).map((r) => [r.levelId, r]));
-  const tps = tpChain(position.exchange, holding.avgCost, ordered, holding);
+  const chain = new Map(simulateDca(position, holding, ordered, fees).map((r) => [r.levelId, r]));
+  const tps = tpChain(position.exchange, holding.avgCost, ordered, fees, holding);
   const levelViews: LevelView[] = ordered
     .map((level) => {
       const trigger =
@@ -95,7 +97,7 @@ function buildView(position: Position, txs: Transaction[], levels: PlanLevel[]):
     .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "dca" ? -1 : 1));
 
   const marketValue = price ? price * holding.quantity : holding.totalCost;
-  const pnl = price ? unrealizedPnl(holding, price) : 0;
+  const pnl = price ? unrealizedPnl(holding, price, fees) : 0;
   const nextLevel =
     levelViews
       .filter((l) => isActive(l) && l.distancePct != null)
@@ -108,7 +110,7 @@ function buildView(position: Position, txs: Transaction[], levels: PlanLevel[]):
     marketValue,
     pnl,
     pnlPct: price && holding.totalCost ? (pnl / holding.totalCost) * 100 : null,
-    breakEven: breakEvenPrice(holding.avgCost),
+    breakEven: breakEvenPrice(holding.avgCost, fees),
     nextLevel,
   };
 }
@@ -119,15 +121,17 @@ async function loadViews(where?: ReturnType<typeof eq>): Promise<PositionView[]>
   const rows = await db.select().from(positions).where(where).orderBy(positions.symbol);
   if (rows.length === 0) return [];
   const ids = rows.map((p) => p.id);
-  const [txs, levels] = await Promise.all([
+  const [txs, levels, fees] = await Promise.all([
     db.select().from(transactions).where(inArray(transactions.positionId, ids)),
     db.select().from(planLevels).where(inArray(planLevels.positionId, ids)),
+    getFeeRates(),
   ]);
   return rows.map((p) =>
     buildView(
       p,
       txs.filter((t) => t.positionId === p.id),
       levels.filter((l) => l.positionId === p.id),
+      fees,
     ),
   );
 }
@@ -141,6 +145,8 @@ export async function getClosedPositions() {
 }
 
 export type PositionDetail = PositionView & {
+  /** Tỷ lệ phí đang dùng, để form trên trình duyệt tính giống server */
+  fees: FeeRates;
   hints: PlanHints;
   transactions: Transaction[];
   simulation: SimulationRow[];
@@ -152,17 +158,19 @@ export async function getPositionDetail(id: number): Promise<PositionDetail | nu
   const db = await getDb();
   const [position] = await db.select().from(positions).where(eq(positions.id, id));
   if (!position) return null;
-  const [txs, levels, positionAlerts] = await Promise.all([
+  const [txs, levels, positionAlerts, fees] = await Promise.all([
     db.select().from(transactions).where(eq(transactions.positionId, id)),
     db.select().from(planLevels).where(eq(planLevels.positionId, id)),
     db.select().from(alerts).where(eq(alerts.positionId, id)).orderBy(desc(alerts.createdAt)).limit(20),
+    getFeeRates(),
   ]);
-  const view = buildView(position, txs, levels);
+  const view = buildView(position, txs, levels, fees);
   return {
     ...view,
-    hints: planHints(position, view.holding, orderLevels(levels)),
+    fees,
+    hints: planHints(position, view.holding, orderLevels(levels), fees),
     transactions: sortTransactions(txs).reverse(),
-    simulation: simulateDca(position, view.holding, view.levels),
+    simulation: simulateDca(position, view.holding, view.levels, fees),
     alerts: positionAlerts,
   };
 }
