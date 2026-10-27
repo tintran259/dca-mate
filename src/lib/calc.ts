@@ -27,7 +27,7 @@ export type LevelInput = {
   quantity: number | null;
   sellPct: number | null;
   status: "pending" | "notified" | "done" | "skipped";
-  /** Giá khớp thực tế khi nấc đã làm */
+  /** Giá chốt mốc của nấc: giá khớp thực tế khi đã làm, giá kế hoạch lúc bỏ qua khi bị bỏ qua */
   filledPrice?: number | null;
 };
 
@@ -165,7 +165,8 @@ export function tpChain(
   let base = startPrice ?? 0;
   if (!base) return out;
 
-  const tps = levels.filter((l) => l.kind === "tp" && l.status !== "skipped" && l.pct > 0);
+  // Nấc bỏ qua có giá mốc vẫn nằm trong chuỗi (làm mốc cho nấc sau, không bán cổ nào)
+  const tps = levels.filter((l) => l.kind === "tp" && l.pct > 0 && (l.status !== "skipped" || l.filledPrice));
   const avgCost = holding?.avgCost ?? 0;
   const netRate = netSellRate(fees);
 
@@ -173,11 +174,11 @@ export function tpChain(
   let remaining = holding?.quantity ?? 0;
   let cumulativeProfit = 0;
   for (const level of tps) {
-    // Nấc đã bán: dùng giá bán thực tế làm mốc cho các nấc sau
-    const price =
-      level.status === "done" && level.filledPrice ? level.filledPrice : ceilToTick(exchange, base * (1 + level.pct / 100));
+    // Nấc đã bán dùng giá bán thực tế, nấc bỏ qua dùng giá mốc lúc bỏ qua, làm mốc cho các nấc sau
+    const closed = level.status === "done" || level.status === "skipped";
+    const price = closed && level.filledPrice ? level.filledPrice : ceilToTick(exchange, base * (1 + level.pct / 100));
     let sellQuantity = 0;
-    if (level.status !== "done" && remaining > 0) {
+    if (!closed && remaining > 0) {
       sellQuantity = tpSellQuantity(level, remaining);
       remaining -= sellQuantity;
     }
@@ -220,8 +221,8 @@ export type SimulationRow = {
   basePrice: number;
   /** Nấc làm mốc: nấc trước trong chuỗi, hoặc nấc DCA gần nhất đã khớp; null = mốc là giá vốn TB */
   baseLevelId: number | null;
-  /** Mốc là giá khớp thực tế của nấc đã làm */
-  baseIsFilled: boolean;
+  /** Mốc đến từ đâu: giá vốn TB, giá khớp của nấc đã làm, giá mốc của nấc bỏ qua, hay giá kế hoạch của nấc trước */
+  baseSource: "avg" | "filled" | "skipped" | "plan";
   price: number;
   quantity: number;
   cost: number;
@@ -261,15 +262,24 @@ export function simulateDca(
   const stop = stopLossPrice(position, holding);
   let quantity = holding.quantity;
   let capital = holding.totalCost;
-  const lastFilled = levels.filter((l) => l.kind === "dca" && l.status === "done" && l.filledPrice).at(-1);
-  let basePrice = lastFilled?.filledPrice ?? holding.avgCost;
-  let baseLevelId: number | null = lastFilled?.id ?? null;
-  let baseIsFilled = lastFilled != null;
+  let basePrice = holding.avgCost;
+  let baseLevelId: number | null = null;
+  let baseSource: SimulationRow["baseSource"] = "avg";
   const rows: SimulationRow[] = [];
 
-  const active = levels.filter((l) => l.kind === "dca" && isActive(l) && l.pct < 0);
-
-  for (const level of active) {
+  for (const level of levels) {
+    if (level.kind !== "dca") continue;
+    // Nấc đã xong (đã làm hoặc bỏ qua) không mua thêm, nhưng giá chốt mốc của nó là mốc cho nấc sau.
+    // Nhờ vậy bỏ qua nấc n thì nấc n+1 không bị tính lại về đúng giá của nấc n.
+    if (!isActive(level)) {
+      if ((level.status === "done" || level.status === "skipped") && level.filledPrice) {
+        basePrice = level.filledPrice;
+        baseLevelId = level.id;
+        baseSource = level.status === "done" ? "filled" : "skipped";
+      }
+      continue;
+    }
+    if (level.pct >= 0) continue;
     const avgBefore = quantity > 0 ? capital / quantity : 0;
     if (!basePrice) break;
     const price = floorToTick(position.exchange, basePrice * (1 + level.pct / 100));
@@ -286,7 +296,7 @@ export function simulateDca(
       pct: level.pct,
       basePrice,
       baseLevelId,
-      baseIsFilled,
+      baseSource,
       price,
       quantity: qty,
       cost,
@@ -306,7 +316,7 @@ export function simulateDca(
     });
     basePrice = price;
     baseLevelId = level.id;
-    baseIsFilled = false;
+    baseSource = "plan";
   }
   return rows;
 }
@@ -328,7 +338,9 @@ export function planHints(position: PositionInput, holding: Holding, levels: Lev
   const levelNo = (kind: "dca" | "tp", id: number) => levels.filter((l) => l.kind === kind).findIndex((l) => l.id === id) + 1;
 
   const dcaRows = simulateDca(position, holding, levels, fees);
-  const lastFilled = levels.filter((l) => l.kind === "dca" && l.status === "done" && l.filledPrice).at(-1);
+  const lastFilled = levels
+    .filter((l) => l.kind === "dca" && (l.status === "done" || l.status === "skipped") && l.filledPrice)
+    .at(-1);
   const dcaNext = dcaRows[0];
 
   const steps = tpChain(position.exchange, holding.avgCost, levels, fees, holding);
@@ -383,10 +395,36 @@ export function classifyTrade(hints: PlanHints, side: "buy" | "sell", price: num
   return pct > 0 ? { kind: "insert", pct, before: next } : { kind: "none" };
 }
 
+/** Số liệu của cảnh báo, để soạn tin Telegram theo từng dòng (DCA và chốt lời tách riêng) */
+export type PriceEventInfo =
+  | {
+      kind: "dca";
+      levelNo: number;
+      pct: number;
+      quantity: number;
+      amount: number;
+      avgBefore: number;
+      avgAfter: number;
+      vsFirstPct: number;
+      overCapital: boolean;
+    }
+  | {
+      kind: "tp";
+      levelNo: number;
+      pct: number;
+      quantity: number;
+      remaining: number;
+      profit: number;
+      avgCost: number;
+      vsAvgPct: number;
+    };
+
 export type PriceEvent = {
   kind: "dca" | "tp" | "stop" | "trail";
   levelId: number | null;
+  /** Nội dung chữ thường, lưu và hiện trên web */
   message: string;
+  info?: PriceEventInfo;
 };
 
 export type Evaluation = {
@@ -410,6 +448,7 @@ export function evaluatePrice(
   const stopHit = stop != null && price <= stop;
   const vsFirst = holding.firstBuyPrice ? (price / holding.firstBuyPrice - 1) * 100 : 0;
   const vsAvg = (price / holding.avgCost - 1) * 100;
+  const levelNo = (kind: "dca" | "tp", id: number) => levels.filter((l) => l.kind === kind).findIndex((l) => l.id === id) + 1;
 
   if (stopHit && !position.stopNotifiedAt) {
     events.push({
@@ -437,6 +476,17 @@ export function evaluatePrice(
           `${formatPct(row.pct)}: mua ${formatQty(row.quantity)} cp (~${formatMoney(price * row.quantity)}). ` +
           `Giá vốn sau DCA ≈ ${formatPrice(newAvg)}.` +
           (over ? ` ⚠️ Vượt giới hạn vốn ${formatMoney(position.maxCapital)}.` : ""),
+        info: {
+          kind: "dca",
+          levelNo: levelNo("dca", row.levelId),
+          pct: row.pct,
+          quantity: row.quantity,
+          amount: price * row.quantity,
+          avgBefore: holding.avgCost,
+          avgAfter: newAvg,
+          vsFirstPct: vsFirst,
+          overCapital: over,
+        },
       });
     }
   }
@@ -455,6 +505,16 @@ export function evaluatePrice(
         `${formatPrice(step.basePrice)}): bán ${formatQty(qty)} cp, còn lại ${formatQty(step.remainingAfter)} cp. ` +
         `${profit >= 0 ? "Lãi" : "Lỗ"} ≈ ${formatMoney(Math.abs(profit))} ` +
         `(giá vốn ${formatPrice(holding.avgCost)}).`,
+      info: {
+        kind: "tp",
+        levelNo: levelNo("tp", level.id),
+        pct: level.pct,
+        quantity: qty,
+        remaining: step.remainingAfter,
+        profit,
+        avgCost: holding.avgCost,
+        vsAvgPct: vsAvg,
+      },
     });
   }
 

@@ -7,7 +7,9 @@ import { getFeeRates } from "./fees";
 import type { FeeRates } from "./market";
 import { getOpenPositions, type PositionView } from "./data";
 import { fetchPrices } from "./prices";
+import { siteUrl } from "./site";
 import { sendTelegram } from "./telegram";
+import { buildTelegramAlert, type AlertItem } from "./telegram-message";
 
 export type CheckSummary = {
   checked: number;
@@ -18,8 +20,8 @@ export type CheckSummary = {
   telegram: "sent" | "skipped" | "failed" | "none";
 };
 
-/** Ghi giá mới cho 1 vị thế, so với kế hoạch, lưu cảnh báo. Trả về nội dung các cảnh báo mới. */
-async function applyPrice(view: PositionView, price: number, fees: FeeRates): Promise<string[]> {
+/** Ghi giá mới cho 1 vị thế, so với kế hoạch, lưu cảnh báo. Trả về các cảnh báo mới. */
+async function applyPrice(view: PositionView, price: number, fees: FeeRates): Promise<AlertItem[]> {
   const db = await getDb();
   const { position, holding } = view;
   const { events, peakPrice } = evaluatePrice(position, holding, view.levels, price, fees);
@@ -56,13 +58,15 @@ async function applyPrice(view: PositionView, price: number, fees: FeeRates): Pr
       .where(inArray(planLevels.id, levelIds));
   }
 
-  return events.map((e) => e.message);
+  return events.map((event) => ({ symbol: position.symbol, positionId: position.id, price, event }));
 }
 
-async function notify(messages: string[]): Promise<CheckSummary["telegram"]> {
-  if (messages.length === 0) return "none";
+/** Gửi 1 tin gộp mọi cảnh báo mới: khối DCA và khối chốt lời tách riêng, kèm nút mở từng mã trên web */
+async function notify(items: AlertItem[]): Promise<CheckSummary["telegram"]> {
+  if (items.length === 0) return "none";
   if (!process.env.TELEGRAM_BOT_TOKEN) return "skipped";
-  const res = await sendTelegram(messages.join("\n\n"));
+  const { text, buttons } = buildTelegramAlert(items, siteUrl());
+  const res = await sendTelegram(text, { html: true, buttons });
   return res.ok ? "sent" : "failed";
 }
 
@@ -79,6 +83,7 @@ export async function runPriceCheck(): Promise<CheckSummary> {
   };
   if (views.length === 0) return summary;
 
+  const items: AlertItem[] = [];
   const [{ prices, errors }, fees] = await Promise.all([fetchPrices(views.map((v) => v.position.symbol)), getFeeRates()]);
   summary.errors = errors;
 
@@ -89,10 +94,11 @@ export async function runPriceCheck(): Promise<CheckSummary> {
       continue;
     }
     summary.updated.push(view.position.symbol);
-    summary.alerts.push(...(await applyPrice(view, price, fees)));
+    items.push(...(await applyPrice(view, price, fees)));
   }
 
-  summary.telegram = await notify(summary.alerts);
+  summary.alerts = items.map((x) => x.event.message);
+  summary.telegram = await notify(items);
   return summary;
 }
 
@@ -100,6 +106,6 @@ export async function runPriceCheck(): Promise<CheckSummary> {
 export async function applyManualPrice(positionId: number, price: number) {
   const view = (await getOpenPositions()).find((v) => v.position.id === positionId);
   if (!view) return { alerts: [] as string[], telegram: "none" as const };
-  const messages = await applyPrice(view, price, await getFeeRates());
-  return { alerts: messages, telegram: await notify(messages) };
+  const items = await applyPrice(view, price, await getFeeRates());
+  return { alerts: items.map((x) => x.event.message), telegram: await notify(items) };
 }

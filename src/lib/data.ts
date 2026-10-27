@@ -183,6 +183,21 @@ export async function getPositionDetail(id: number): Promise<PositionDetail | nu
   };
 }
 
+/** Giá kế hoạch hiện tại của một nấc, dùng làm giá mốc khi bỏ qua nấc đó */
+export async function getLevelPlanPrice(levelId: number): Promise<number | null> {
+  const db = await getDb();
+  const [level] = await db.select().from(planLevels).where(eq(planLevels.id, levelId));
+  if (!level) return null;
+  const [[position], txs, levels, fees] = await Promise.all([
+    db.select().from(positions).where(eq(positions.id, level.positionId)),
+    db.select().from(transactions).where(eq(transactions.positionId, level.positionId)),
+    db.select().from(planLevels).where(eq(planLevels.positionId, level.positionId)),
+    getFeeRates(),
+  ]);
+  if (!position) return null;
+  return buildView(position, txs, levels, fees).levels.find((l) => l.id === levelId)?.trigger ?? null;
+}
+
 export type AlertRow = Alert & { symbol: string };
 
 export async function getAlerts(status?: Alert["status"]): Promise<AlertRow[]> {

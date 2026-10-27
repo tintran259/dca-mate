@@ -17,7 +17,7 @@ import { classifyTrade, computeHolding, planHints } from "@/lib/calc";
 import { applyManualPrice, runPriceCheck } from "@/lib/check";
 import { getFeeRates, saveFeeRates } from "@/lib/fees";
 import { formatPrice, todayVN } from "@/lib/format";
-import { orderLevels } from "@/lib/data";
+import { getLevelPlanPrice, orderLevels } from "@/lib/data";
 import { EXCHANGES, feePctError } from "@/lib/market";
 import { parseDecimalInput, parseIntInput } from "@/lib/parse";
 import { fetchPrices, lookupSymbol } from "@/lib/prices";
@@ -369,13 +369,27 @@ export async function deleteTransaction(transactionId: number) {
 
 // ---------- Nấc & cảnh báo ----------
 
+/**
+ * Bỏ qua một nấc: lưu giá kế hoạch hiện tại của nấc làm giá mốc, để các nấc sau vẫn tính tiếp từ giá này
+ * (không bị kéo về đúng giá của nấc vừa bỏ qua rồi nhắc lại ngay).
+ */
+async function skipLevel(levelId: number) {
+  const db = await getDb();
+  const anchor = await getLevelPlanPrice(levelId);
+  await db.update(planLevels).set({ status: "skipped", filledPrice: anchor }).where(eq(planLevels.id, levelId));
+}
+
 export async function setLevelStatus(levelId: number, status: "pending" | "done" | "skipped") {
   await requireAuth();
   const db = await getDb();
-  await db
-    .update(planLevels)
-    .set({ status, ...(status === "pending" && { notifiedAt: null, filledPrice: null }) })
-    .where(eq(planLevels.id, levelId));
+  if (status === "skipped") {
+    await skipLevel(levelId);
+  } else {
+    await db
+      .update(planLevels)
+      .set({ status, ...(status === "pending" && { notifiedAt: null, filledPrice: null }) })
+      .where(eq(planLevels.id, levelId));
+  }
   if (status !== "pending") {
     await db
       .update(alerts)
@@ -395,7 +409,8 @@ export async function setAlertStatus(alertId: number, status: "done" | "skipped"
     .where(and(eq(alerts.id, alertId), eq(alerts.status, "new")))
     .returning();
   if (alert?.levelId) {
-    await db.update(planLevels).set({ status }).where(eq(planLevels.id, alert.levelId));
+    if (status === "skipped") await skipLevel(alert.levelId);
+    else await db.update(planLevels).set({ status }).where(eq(planLevels.id, alert.levelId));
   }
   refreshAll();
 }
@@ -403,10 +418,16 @@ export async function setAlertStatus(alertId: number, status: "done" | "skipped"
 export async function markAllAlertsSeen() {
   await requireAuth();
   const db = await getDb();
-  const open = await db.select().from(alerts).where(eq(alerts.status, "new"));
-  for (const a of open) {
+  // Theo thứ tự nấc trong chuỗi, để mỗi nấc lấy đúng giá mốc sau khi nấc trước đã bỏ qua
+  const open = await db
+    .select({ alert: alerts, sortOrder: planLevels.sortOrder })
+    .from(alerts)
+    .leftJoin(planLevels, eq(alerts.levelId, planLevels.id))
+    .where(eq(alerts.status, "new"))
+    .orderBy(planLevels.sortOrder, planLevels.id);
+  for (const { alert: a } of open) {
     await db.update(alerts).set({ status: "skipped" }).where(eq(alerts.id, a.id));
-    if (a.levelId) await db.update(planLevels).set({ status: "skipped" }).where(eq(planLevels.id, a.levelId));
+    if (a.levelId) await skipLevel(a.levelId);
   }
   refreshAll();
 }

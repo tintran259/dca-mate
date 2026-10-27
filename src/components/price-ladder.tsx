@@ -47,7 +47,9 @@ export function PriceLadder({ detail }: { detail: PositionDetail }) {
       price: level.trigger,
       tone: isDca ? "down" : "up",
       title: levelLabel(level),
-      detail: isDca
+      detail: level.status === "skipped"
+        ? `Đã bỏ qua, giữ mốc ${formatPrice(level.trigger)} cho nấc sau`
+        : isDca
         ? `Mua ${formatQty(level.quantity)} cp` + (level.avgAfter ? ` → giá vốn ${formatPrice(level.avgAfter)}` : "")
         : `Bán ${formatQty(level.sellQuantity)} cp, còn ${formatQty(level.tpRemaining)} cp` +
           (level.tpProfit ? ` · ${level.tpProfit >= 0 ? "lãi" : "lỗ"} ≈ ${formatMoney(Math.abs(level.tpProfit))}` : ""),

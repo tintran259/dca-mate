@@ -648,6 +648,50 @@ try {
     await chart.getByText("1D", { exact: true }).click();
     await chart.getByText("Chưa có dữ liệu trong phiên").waitFor();
   });
+
+  await tc("TC39", "Bỏ qua nấc DCA 1 khi đang chạm: nấc 2 giữ nguyên giá, không bị nhắc lại", async () => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    // Mã riêng cho case này: 21.000 × 1.000, 3 nấc DCA -10% → 18.900 / 17.000 / 15.300
+    await page.goto(BASE + "/positions/new");
+    await page.locator("#symbol").fill("VNM");
+    await page.locator("#price").fill("21000");
+    await page.locator("#quantity").fill("1000");
+    const list = page.locator("ol").filter({ hasText: "Giá giảm" }).first();
+    for (const i of [0, 1, 2]) {
+      await page.getByRole("button", { name: "Thêm nấc DCA" }).click();
+      await list.locator("> li").nth(i).getByLabel("Giá giảm").fill("10");
+      await list.locator("> li").nth(i).getByLabel("Mua thêm").fill("1000");
+    }
+    await page.getByRole("button", { name: "Lưu vị thế" }).click();
+    await page.waitForURL(/\/positions\/\d+/);
+    const vnmPath = new URL(page.url()).pathname;
+    const setPrice = async (price) => {
+      await page.goto(BASE + vnmPath);
+      await page.getByLabel("Giá hiện tại").fill(price);
+      await page.getByLabel("Giá hiện tại").press("Enter");
+      const st = page.getByRole("status").filter({ hasText: /Đã cập nhật giá/ });
+      await st.waitFor();
+      return st.innerText();
+    };
+    expectIncludes(await setPrice("18900"), "1 cảnh báo mới", "chạm nấc 1");
+
+    // Bỏ qua nấc 1 ngay trên bậc thang
+    await page.goto(BASE + vnmPath);
+    await page.getByText("Bậc thang kế hoạch").waitFor();
+    await dcaRung(0).getByRole("button", { name: "Bỏ qua nấc này" }).click();
+    await dcaRung(0).getByRole("button", { name: "Khôi phục" }).waitFor();
+    expectIncludes(await dcaRung(0).innerText(), "giữ mốc 18.900", "nấc 1 giữ mốc trên bậc thang");
+
+    await page.locator("#plan summary").click();
+    expectIncludes(await planDca(0).innerText(), "Đã bỏ qua, giữ mốc 18.900", "nấc 1 trong Sửa kế hoạch");
+    const n2 = await planDca(1).innerText();
+    expectIncludes(n2, "≤ 17.000", "nấc 2 giữ nguyên giá");
+    expectIncludes(n2, "mốc bỏ qua nấc 1 18.900", "nấc 2 tính từ mốc của nấc 1");
+
+    // Giá vẫn ở 18.900: không được nhắc nấc 2; xuống 17.000 mới nhắc
+    expectIncludes(await setPrice("18900"), "Chưa chạm nấc nào", "không nhắc lại ở giá nấc 1");
+    expectIncludes(await setPrice("17000"), "1 cảnh báo mới", "nhắc nấc 2 khi chạm 17.000");
+  });
 } finally {
   await browser.close();
   cleanup();

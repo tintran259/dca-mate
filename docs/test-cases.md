@@ -2,7 +2,7 @@
 
 Hai lớp test:
 
-- **Unit test** (`npm test`, 111 test): giá vốn, chuỗi DCA, chuỗi chốt lời, bước giá, lô 100 (`calc.test.ts`); kiểm tra ô nhập (`validate.test.ts`); phí, thuế, lãi/lỗ sau phí và giờ trong phiên (`fees.test.ts`); dữ liệu biểu đồ tổng quan (`portfolio.test.ts`); luồng thông báo Telegram (`notify.test.ts`); chép dữ liệu sang database mới (`src/db/copy.test.ts`: đủ mọi bảng, giữ id, đặt lại bộ đếm id, dừng khi đích đã có dữ liệu, không sửa nguồn); lãi theo kế hoạch chốt lời (`plan-summary.test.ts`: 3 nấc +10/+20/+30% bán 30/50/100% của HPG 21.000 × 1.000 lời ≈ 8.639.138đ, bán hết; kế hoạch bán 30% thì còn giữ 700 cp; nấc đã làm/bỏ qua không tính).
+- **Unit test** (`npm test`, 124 test): giá vốn, chuỗi DCA, chuỗi chốt lời, bước giá, lô 100 (`calc.test.ts`); kiểm tra ô nhập (`validate.test.ts`); phí, thuế, lãi/lỗ sau phí và giờ trong phiên (`fees.test.ts`); dữ liệu biểu đồ tổng quan (`portfolio.test.ts`); luồng thông báo Telegram (`notify.test.ts`); chép dữ liệu sang database mới (`src/db/copy.test.ts`: đủ mọi bảng, giữ id, đặt lại bộ đếm id, dừng khi đích đã có dữ liệu, không sửa nguồn); lãi theo kế hoạch chốt lời (`plan-summary.test.ts`: 3 nấc +10/+20/+30% bán 30/50/100% của HPG 21.000 × 1.000 lời ≈ 8.639.138đ, bán hết; kế hoạch bán 30% thì còn giữ 700 cp; nấc đã làm/bỏ qua không tính).
 - **E2E** (`npm run test:e2e`, 36 case): chạy app thật trên trình duyệt Chrome với database tạm, đi qua các luồng dưới đây. Không đụng tới dữ liệu trong `.data/`. Build vào `.next-e2e` (tsconfig riêng `tsconfig.e2e.json`) nên chạy được trong lúc `npm run dev` đang mở mà không làm hỏng cache của dev server. Thêm `-- --no-build` để chạy lại test mà không build. Giá thị trường dùng giá giả lập `MOCK_PRICES="HPG:21000,CTG:30950"` (FPT cố ý không có giá) để kết quả không đổi theo thị trường.
 
 Số liệu chung cho các case E2E: mã **HPG (HOSE)**, mua đầu **21.000 × 1.000 cp**, phí tự tính 0,15% (31.500đ), nên giá vốn TB là 21.031,5.
@@ -74,6 +74,7 @@ Kế hoạch: 3 nấc DCA −10% (mua 1.000 / 1.000 / 1.500 cp), mẫu chốt l�
 | TC33 | Menu ☰ trên điện thoại | Màn 390px, bấm ☰, chọn "Cảnh báo" | Không còn thanh nav hiện sẵn; drawer "Menu" mở; chuyển sang `/alerts` thì drawer tự đóng |
 | TC32 | Biểu đồ tổng quan | Ở `/`, đổi Giá / Tài sản / Theo mã, mở "Xem dạng bảng" | Có tiêu đề "Biểu đồ danh mục", chú thích có mã đang giữ và "Vốn đang rót"; bảng có dữ liệu; khung thời gian đúng 1D 1W 1M 3M 6M 1Y; 1D không có nến thì báo "Chưa có dữ liệu trong phiên" |
 | TC34 | Độ rộng trang | Màn 1440px, mở `/`, `/alerts`, `/settings`, `/positions/new` | Cả 4 trang rộng bằng nhau |
+| TC39 | Bỏ qua nấc DCA đang chạm | VNM 21.000 × 1.000, 3 nấc −10%; giá tay 18.900; bấm "Bỏ qua nấc này" ở nấc 1; giá tay 18.900 rồi 17.000 | Nấc 1 "giữ mốc 18.900"; nấc 2 vẫn ≤ 17.000 "so với mốc bỏ qua nấc 1"; ở 18.900 "Chưa chạm nấc nào"; ở 17.000 có 1 cảnh báo |
 
 ## Unit test bổ sung (`fees.test.ts`)
 
@@ -100,21 +101,24 @@ Số liệu: HPG mua 21.000 × 1.000 (giá vốn 21.031,5), DCA −10% ≤ 18.90
 
 | ID | Tình huống | Kết quả mong đợi |
 |---|---|---|
-| N01 | Giá 18.900 chạm nấc DCA 1 | 1 cảnh báo, nấc sang "Đã nhắc", 1 tin: "📉 HPG 18.900 … chạm nấc DCA -10,0%: mua 1.000 cp … Giá vốn sau DCA ≈ 19.980" |
+| N01 | Giá 18.900 chạm nấc DCA 1 | 1 cảnh báo, nấc sang "Đã nhắc", 1 tin định dạng HTML: khối "🔴 MUA THÊM (DCA) · 1 nấc", "📉 HPG · Nấc DCA 1 (-10,0%)", "Giá chạm: 18.900", "👉 MUA 1.000 cp", "Giá vốn: 21.032 → 19.980"; không có khối chốt lời |
 | N02 | Giá 19.000 chưa chạm | Không cảnh báo, không gửi |
 | N03 | Kiểm tra lại nhiều lần ở vùng giá đã nhắc | Chỉ 1 tin (mỗi nấc nhắc 1 lần) |
-| N04 | Giá 23.150 chạm chốt lời 1 | Tin "🎯 HPG 23.150 chạm nấc chốt lời 1 … bán 300 cp, còn lại 700 cp … Lãi ≈ …" |
+| N04 | Giá 23.150 chạm chốt lời 1 | Khối "🟢 CHỐT LỜI (BÁN) · 1 nấc", "📈 HPG · Nấc chốt lời 1 (+10,0%)", "👉 BÁN 300 cp, còn lại 700 cp", "Lãi ước tính: +…"; không có khối DCA |
 | N05 | Giá rơi thẳng xuống 16.900 qua 2 nấc DCA | 2 cảnh báo, gộp trong 1 tin |
-| N06 | HPG chạm DCA và FPT chạm chốt lời cùng lúc | 1 tin chứa cả hai mã |
+| N06 | HPG chạm DCA và FPT chạm chốt lời cùng lúc | 1 tin; khối DCA (có HPG) đứng trước khối chốt lời (có FPT) |
 | N07 | Nấc đã bỏ qua / đã làm | Không nhắc |
 | N08 | Mã đã đóng | Không kiểm tra |
 | N09 | Nhập giá tay chạm nấc | Gửi tin ngay |
 | N10 | Chưa cấu hình Telegram | Cảnh báo vẫn lưu trên web, trạng thái "skipped" |
 | N11 | Telegram trả lỗi 500 | Cảnh báo vẫn lưu, trạng thái "failed" |
-| N12 | Có `APP_URL` | Tin kết thúc bằng link `/alerts` |
+| N12 | Địa chỉ web https (`APP_URL`) | Nút "Mở HPG" tới `/positions/<id>` và nút "Xem tất cả cảnh báo" tới `/alerts` |
+| N12b | Chạy local (localhost) | Không gửi nút (Telegram không nhận localhost); link mở mã và link `/alerts` ghi thẳng trong tin |
 | N13 | Không lấy được giá | Báo thiếu giá, không cảnh báo |
 | N14 | Khôi phục nấc đã nhắc rồi giá chạm lại | Nhắc lại |
 | N15 | Nấc 1 đã khớp ở 18.900 | Nấc 2 không nhắc ở 17.050, nhắc ở 17.000 |
+| N16 | Nhắc nấc DCA 1 ở 18.900, rồi bỏ qua (lưu mốc 18.900) | Kiểm tra lại ở 18.900 và 17.050: không nhắc; 17.000: nhắc nấc 2 |
+| N17 | Nhắc chốt lời 1 ở 23.150, rồi bỏ qua (lưu mốc 23.150) | Kiểm tra lại ở 23.150 và 25.450: không nhắc; 25.500: nhắc nấc 2 |
 
 Gửi thật vào chat của bạn (`npm run test:telegram`, đọc `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` từ môi trường): L1 chạm DCA, L2 chạm chốt lời, L3 rơi qua 2 nấc DCA và mã khác chạm chốt lời cùng lúc (1 tin gộp 3 cảnh báo).
 Cắt lỗ và trailing stop không có test vì giao diện không còn ô nhập nên không bao giờ kích hoạt.

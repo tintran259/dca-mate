@@ -370,7 +370,7 @@ function DcaStepList({
           ? ""
           : sim.baseLevelId == null
             ? `so với giá vốn TB ${formatPrice(sim.basePrice)}`
-            : `so với giá ${sim.baseIsFilled ? "khớp" : "mua"} nấc ${levelNo(sim.baseLevelId)} ${formatPrice(sim.basePrice)}`;
+            : `so với ${sim.baseSource === "filled" ? "giá khớp" : sim.baseSource === "skipped" ? "mốc bỏ qua" : "giá mua"} nấc ${levelNo(sim.baseLevelId)} ${formatPrice(sim.basePrice)}`;
 
         return (
           <li key={row.key} className={cn("rounded-xl border border-line p-3", locked && "opacity-60")}>
@@ -453,7 +453,9 @@ function DcaStepList({
                 <span className="text-muted">
                   {row.status === "done" && row.filledPrice
                     ? `Đã khớp ở ${formatPrice(row.filledPrice)}. Các nấc sau tính tiếp từ giá này.`
-                    : "Nấc này không tính vào chuỗi DCA còn lại."}
+                    : row.status === "skipped" && row.filledPrice
+                      ? `Đã bỏ qua, giữ mốc ${formatPrice(row.filledPrice)}. Các nấc sau vẫn tính tiếp từ giá này.`
+                      : "Nấc này không tính vào chuỗi DCA còn lại."}
                 </span>
               ) : (
                 <span className="text-muted">Nhập giá mua, khối lượng và % giảm để xem giá vốn sau DCA.</span>
@@ -551,7 +553,11 @@ function TpList({
             </div>
 
             <div className="mt-2.5 rounded-lg bg-surface-2 px-3 py-2 text-sm">
-              {step ? (
+              {step && row.status === "skipped" ? (
+                <span className="text-muted">
+                  Đã bỏ qua, giữ mốc <b className="num">{formatPrice(step.price)}</b>. Các nấc sau vẫn tính tiếp từ giá này.
+                </span>
+              ) : step ? (
                 <div>
                   Bán khi giá ≥ <b className="num">{formatPrice(step.price)}</b>{" "}
                   <span className="text-muted">

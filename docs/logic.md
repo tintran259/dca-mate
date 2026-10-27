@@ -60,8 +60,10 @@ Các nấc nối tiếp nhau theo đúng thứ tự trong kế hoạch:
 
 | Nấc | Tính % giảm từ |
 |---|---|
-| Nấc đầu tiên còn chờ | **Giá khớp thực tế của nấc DCA gần nhất đã làm**; chưa khớp nấc nào thì từ **giá vốn TB** |
+| Nấc đầu tiên còn chờ | **Giá chốt mốc của nấc DCA gần nhất đã xong**: giá khớp nếu đã làm, giá mốc nếu đã bỏ qua; chưa có nấc nào xong thì từ **giá vốn TB** |
 | Các nấc sau | **Giá mua của nấc trước** |
+
+- **Bỏ qua một nấc vẫn giữ mốc:** lúc bấm "Bỏ qua", app lưu giá kế hoạch hiện tại của nấc làm giá mốc (cột `filled_price`). Nấc bỏ qua không mua gì, nhưng các nấc sau vẫn tính tiếp từ giá mốc này. Nhờ vậy nấc sau không bị kéo về đúng giá của nấc vừa bỏ qua và nhắc lại ngay. Ví dụ bỏ qua nấc 1 (mốc 18.900) thì nấc 2 vẫn ≤ 17.000, giá phải xuống 17.000 mới nhắc.
 
 - Lệnh mua thêm **ngoài kế hoạch** chỉ làm đổi giá vốn TB, không làm mốc tính nấc.
 - Nấc đã nhắc nhưng chưa ghi lệnh được coi như sẽ khớp khi tính các nấc sau.
@@ -77,7 +79,7 @@ nấc 1 ≤ 18.900 → nấc 2 ≤ 17.000 → nấc 3 ≤ 15.300.
 | Nấc | Tính % tăng từ |
 |---|---|
 | Nấc 1 | **Giá vốn TB hiện tại** (chưa DCA là giá gốc, đã DCA là giá vốn sau DCA) |
-| Các nấc sau | **Giá của nấc trước**; nấc đã bán dùng giá bán thực tế |
+| Các nấc sau | **Giá của nấc trước**; nấc đã bán dùng giá bán thực tế, nấc bỏ qua dùng giá mốc lúc bỏ qua (và không bán cổ nào) |
 
 - **% bán** tính trên **số cổ còn lại sau nấc trước**; đặt 100% là bán hết.
 - Mỗi nấc hiện: bán khi giá ≥ X, **số cổ bán, số cổ còn lại, tiền lãi** (so với giá vốn, đã trừ phí và thuế).
@@ -106,7 +108,7 @@ Khi ghi lệnh mua/bán tay (không bấm "Đã làm" ở nấc), app so sánh l
 | Chờ | Chưa chạm |
 | Đã nhắc | Giá đã chạm, đã gửi cảnh báo, chờ người dùng xử lý |
 | Đã làm | Đã có lệnh thật; lưu **giá khớp**. Bị khóa trong "Sửa kế hoạch" (không sửa, không xóa) |
-| Bỏ qua | Không tính vào chuỗi nữa |
+| Bỏ qua | Không mua/bán nữa; lưu **giá mốc** (giá kế hoạch lúc bỏ qua) để các nấc sau vẫn tính tiếp từ đó. "Khôi phục" thì xóa giá mốc |
 
 - Nút **"Đã làm"** (ở bậc thang hoặc ở trang Cảnh báo) mở **popup xác nhận**: giá và KL điền sẵn theo nấc, sửa được; hiện giá vốn trước → sau lệnh (hoặc tiền lãi nếu bán). Bấm xác nhận là ghi lệnh luôn.
 - **Khôi phục** (ở bậc thang) đưa nấc về trạng thái chờ.
@@ -117,6 +119,7 @@ Khi ghi lệnh mua/bán tay (không bấm "Đã làm" ở nấc), app so sánh l
 
 - Lúc tạo vị thế, giá hiện tại lấy từ nguồn giá thị trường (không phải giá mua); mọi nguồn đều lỗi thì tạm dùng giá mua, nhãn hiện "Giá lúc mua".
 - Cron (hoặc nút "Cập nhật giá", hoặc nhập giá tay) lấy giá, so với kế hoạch. Nấc chạm lần đầu thì tạo cảnh báo, chuyển nấc sang "Đã nhắc" và gửi Telegram. **Mỗi nấc chỉ nhắc 1 lần.**
+- **Tin Telegram** gộp mọi cảnh báo mới trong 1 tin, chia 2 khối tách bạch: **🔴 MUA THÊM (DCA)** và **🟢 CHỐT LỜI (BÁN)**. Mỗi nấc ghi: mã và nấc, giá chạm, việc cần làm ("MUA 1.000 cp" / "BÁN 300 cp, còn lại 700 cp"), giá vốn trước → sau (DCA) hoặc lãi ước tính (chốt lời). Dưới tin có nút **"Mở <mã>"** vào thẳng trang chi tiết và **"Xem tất cả cảnh báo"**. Địa chỉ web lấy từ `APP_URL`, không có thì dùng domain production Vercel; chạy local (localhost) thì Telegram không nhận nút nên link được ghi thẳng trong tin.
 - Ở trang Cảnh báo: "Đã làm, ghi lệnh" mở popup ghi lệnh; "Bỏ qua" và "Bỏ qua tất cả" có **popup xác nhận**. Cảnh báo đã xử lý **không hoàn tác được** (server cũng chặn).
 - Code tính cắt lỗ và trailing stop vẫn còn trong `evaluatePrice` nhưng không còn ô nhập trên giao diện, nên không bao giờ kích hoạt.
 

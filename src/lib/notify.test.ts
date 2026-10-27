@@ -23,6 +23,7 @@ type Modules = {
   db: Awaited<ReturnType<typeof import("@/db")["getDb"]>>;
   schema: typeof import("@/db/schema");
   check: typeof import("./check");
+  data: typeof import("./data");
   eq: typeof import("drizzle-orm")["eq"];
 };
 let m: Modules;
@@ -33,12 +34,14 @@ beforeAll(async () => {
     db: await getDb(),
     schema: await import("@/db/schema"),
     check: await import("./check"),
+    data: await import("./data"),
     eq: (await import("drizzle-orm")).eq,
   };
 });
 
 // Tin nhắn Telegram đã gửi (fetch giả)
-let sent: { chatId: string; text: string }[] = [];
+type Sent = { chatId: string; text: string; parseMode?: string; buttons?: { text: string; url: string }[][] };
+let sent: Sent[] = [];
 let telegramStatus = 200;
 
 function useFakeTelegram() {
@@ -47,7 +50,12 @@ function useFakeTelegram() {
     vi.fn(async (url: string, init?: RequestInit) => {
       if (!String(url).startsWith("https://api.telegram.org/")) throw new Error(`fetch ngoài dự kiến: ${url}`);
       const body = JSON.parse(String(init?.body));
-      sent.push({ chatId: String(body.chat_id), text: body.text });
+      sent.push({
+        chatId: String(body.chat_id),
+        text: body.text,
+        parseMode: body.parse_mode,
+        buttons: body.reply_markup?.inline_keyboard,
+      });
       return new Response(telegramStatus === 200 ? '{"ok":true}' : '{"ok":false}', { status: telegramStatus });
     }),
   );
@@ -139,9 +147,13 @@ describe("thông báo khi giá chạm nấc", () => {
     expect(await levelStatus(levelIds[0])).toBe("notified");
     expect(sent).toHaveLength(1);
     expect(sent[0].chatId).toBe("42");
-    expect(sent[0].text).toContain("📉 HPG 18.900");
-    expect(sent[0].text).toContain("chạm nấc DCA -10,0%: mua 1.000 cp");
-    expect(sent[0].text).toContain("Giá vốn sau DCA ≈ 19.980");
+    expect(sent[0].parseMode).toBe("HTML");
+    expect(sent[0].text).toContain("🔴 <b>MUA THÊM (DCA)</b> · 1 nấc");
+    expect(sent[0].text).toContain("📉 <b>HPG</b> · Nấc DCA 1 (-10,0%)");
+    expect(sent[0].text).toContain("Giá chạm: <b>18.900</b>");
+    expect(sent[0].text).toContain("👉 <b>MUA 1.000 cp</b>");
+    expect(sent[0].text).toContain("Giá vốn: 21.032 → <b>19.980</b>");
+    expect(sent[0].text).not.toContain("CHỐT LỜI");
   });
 
   it("N02: giá chưa chạm nấc nào → không cảnh báo, không gửi tin", async () => {
@@ -166,9 +178,12 @@ describe("thông báo khi giá chạm nấc", () => {
     const s = await runAt("HPG:23150");
     expect(s.alerts).toHaveLength(1);
     expect(await levelStatus(levelIds[2])).toBe("notified");
-    expect(sent[0].text).toContain("🎯 HPG 23.150 chạm nấc chốt lời 1");
-    expect(sent[0].text).toContain("bán 300 cp, còn lại 700 cp");
-    expect(sent[0].text).toMatch(/Lãi ≈ [\d.,]+/);
+    expect(sent[0].text).toContain("🟢 <b>CHỐT LỜI (BÁN)</b> · 1 nấc");
+    expect(sent[0].text).toContain("📈 <b>HPG</b> · Nấc chốt lời 1 (+10,0%)");
+    expect(sent[0].text).toContain("Giá chạm: <b>23.150</b>");
+    expect(sent[0].text).toContain("👉 <b>BÁN 300 cp</b>, còn lại 700 cp");
+    expect(sent[0].text).toMatch(/Lãi ước tính: <b>\+[\d.,]+/);
+    expect(sent[0].text).not.toContain("MUA THÊM");
   });
 
   it("N05: giá rơi qua 2 nấc DCA trong 1 lần kiểm tra → nhắc cả 2, gộp trong 1 tin", async () => {
@@ -178,7 +193,8 @@ describe("thông báo khi giá chạm nấc", () => {
     expect(await levelStatus(levelIds[0])).toBe("notified");
     expect(await levelStatus(levelIds[1])).toBe("notified");
     expect(sent).toHaveLength(1);
-    expect(sent[0].text.match(/📉 HPG/g)).toHaveLength(2);
+    expect(sent[0].text).toContain("MUA THÊM (DCA)</b> · 2 nấc");
+    expect(sent[0].text.match(/📉 <b>HPG<\/b>/g)).toHaveLength(2);
   });
 
   it("N06: nhiều mã cùng chạm nấc → 1 tin chứa cả hai mã", async () => {
@@ -187,8 +203,13 @@ describe("thông báo khi giá chạm nấc", () => {
     const s = await runAt("HPG:18900,FPT:111000");
     expect(s.alerts).toHaveLength(2);
     expect(sent).toHaveLength(1);
-    expect(sent[0].text).toContain("📉 HPG");
-    expect(sent[0].text).toContain("🎯 FPT");
+    const text = sent[0].text;
+    expect(text).toContain("📉 <b>HPG</b>");
+    expect(text).toContain("📈 <b>FPT</b>");
+    // Khối DCA đứng trước khối chốt lời, mỗi mã nằm đúng khối của nó
+    expect(text.indexOf("MUA THÊM (DCA)")).toBeLessThan(text.indexOf("📉 <b>HPG</b>"));
+    expect(text.indexOf("📉 <b>HPG</b>")).toBeLessThan(text.indexOf("CHỐT LỜI (BÁN)"));
+    expect(text.indexOf("CHỐT LỜI (BÁN)")).toBeLessThan(text.indexOf("📈 <b>FPT</b>"));
   });
 
   it("N07: nấc đã làm hoặc đã bỏ qua → không nhắc", async () => {
@@ -213,7 +234,7 @@ describe("thông báo khi giá chạm nấc", () => {
     const res = await m.check.applyManualPrice(positionId, 18_900);
     expect(res.alerts).toHaveLength(1);
     expect(res.telegram).toBe("sent");
-    expect(sent[0].text).toContain("📉 HPG 18.900");
+    expect(sent[0].text).toContain("Giá chạm: <b>18.900</b>");
   });
 
   it("N10: chưa cấu hình Telegram → cảnh báo vẫn lưu trên web, không gửi", async () => {
@@ -233,11 +254,23 @@ describe("thông báo khi giá chạm nấc", () => {
     expect(await alertCount()).toBe(1);
   });
 
-  it("N12: có APP_URL → tin kèm link mở trang Cảnh báo", async () => {
+  it("N12: địa chỉ web https → nút mở từng mã và nút xem tất cả cảnh báo", async () => {
     process.env.APP_URL = "https://dca-mate.vercel.app";
-    await createPosition("HPG", 21_000, 1000, HPG_PLAN);
+    const { positionId } = await createPosition("HPG", 21_000, 1000, HPG_PLAN);
     await runAt("HPG:18900");
-    expect(sent[0].text.endsWith("\n\nhttps://dca-mate.vercel.app/alerts")).toBe(true);
+    expect(sent[0].buttons).toEqual([
+      [{ text: "Mở HPG", url: `https://dca-mate.vercel.app/positions/${positionId}` }],
+      [{ text: "Xem tất cả cảnh báo", url: "https://dca-mate.vercel.app/alerts" }],
+    ]);
+    expect(sent[0].text).not.toContain("🔗");
+  });
+
+  it("N12b: chạy local (localhost) → không gửi nút, link ghi thẳng trong tin", async () => {
+    const { positionId } = await createPosition("HPG", 21_000, 1000, HPG_PLAN);
+    await runAt("HPG:18900");
+    expect(sent[0].buttons).toBeUndefined();
+    expect(sent[0].text).toContain(`🔗 http://localhost:3000/positions/${positionId}`);
+    expect(sent[0].text).toContain("Xem tất cả cảnh báo: http://localhost:3000/alerts");
   });
 
   it("N13: không lấy được giá → báo thiếu giá, không cảnh báo", async () => {
@@ -267,7 +300,45 @@ describe("thông báo khi giá chạm nấc", () => {
     expect((await runAt("HPG:17050")).alerts).toHaveLength(0);
     const s = await runAt("HPG:17000");
     expect(s.alerts).toHaveLength(1);
-    expect(sent[0].text).toContain("📉 HPG 17.000");
+    expect(sent[0].text).toContain("Nấc DCA 2");
+    expect(sent[0].text).toContain("Giá chạm: <b>17.000</b>");
+  });
+
+  it("N16: bỏ qua nấc 1 lúc giá 18.900 → nấc 2 không bị nhắc lại ở 18.900, chỉ nhắc khi xuống 17.000", async () => {
+    const { levelIds } = await createPosition("HPG", 21_000, 1000, HPG_PLAN);
+    await runAt("HPG:18900");
+    expect(sent).toHaveLength(1);
+    // Bỏ qua nấc 1 giống thao tác "Bỏ qua": lưu giá kế hoạch hiện tại làm mốc
+    const anchor = await m.data.getLevelPlanPrice(levelIds[0]);
+    expect(anchor).toBe(18_900);
+    await m.db
+      .update(m.schema.planLevels)
+      .set({ status: "skipped", filledPrice: anchor })
+      .where(m.eq(m.schema.planLevels.id, levelIds[0]));
+    expect((await runAt("HPG:18900")).alerts).toHaveLength(0);
+    expect((await runAt("HPG:17050")).alerts).toHaveLength(0);
+    const s = await runAt("HPG:17000");
+    expect(s.alerts).toHaveLength(1);
+    expect(sent.at(-1)!.text).toContain("Nấc DCA 2");
+    expect(await levelStatus(levelIds[1])).toBe("notified");
+  });
+
+  it("N17: bỏ qua nấc chốt lời 1 → nấc 2 vẫn tính từ mốc của nấc 1, không nhắc lại ngay", async () => {
+    const { levelIds } = await createPosition("HPG", 21_000, 1000, [
+      { kind: "tp", pct: 10, sellPct: 30 },
+      { kind: "tp", pct: 10, sellPct: 100 },
+    ]);
+    await runAt("HPG:23150");
+    const anchor = await m.data.getLevelPlanPrice(levelIds[0]);
+    expect(anchor).toBe(23_150);
+    await m.db
+      .update(m.schema.planLevels)
+      .set({ status: "skipped", filledPrice: anchor })
+      .where(m.eq(m.schema.planLevels.id, levelIds[0]));
+    expect((await runAt("HPG:23150")).alerts).toHaveLength(0);
+    // Nấc 2 = 23.150 × 1,1 = 25.465 → 25.500
+    expect((await runAt("HPG:25450")).alerts).toHaveLength(0);
+    expect((await runAt("HPG:25500")).alerts).toHaveLength(1);
   });
 });
 
