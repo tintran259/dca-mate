@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { MobileMenu, MobileMenuView, TopNav, TopNavView } from "@/components/app-nav";
+import { PriceAutoRefresh } from "@/components/price-auto-refresh";
 import { RefreshPricesButton } from "@/components/position-forms";
 import { countNewAlerts } from "@/lib/data";
 
@@ -66,6 +67,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
         </div>
       </header>
       <main className="mx-auto w-full max-w-6xl px-4 pt-5 pb-12 md:px-6 md:pt-8">{children}</main>
+      <PriceAutoRefresh />
     </>
   );
 }

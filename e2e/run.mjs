@@ -692,6 +692,29 @@ try {
     expectIncludes(await setPrice("18900"), "Chưa chạm nấc nào", "không nhắc lại ở giá nấc 1");
     expectIncludes(await setPrice("17000"), "1 cảnh báo mới", "nhắc nấc 2 khi chạm 17.000");
   });
+
+  await tc("TC40", "Tổng quan đang mở tự cập nhật khi giá đổi ngầm (không cần tải lại trang)", async () => {
+    // Tab A: mở Tổng quan và để yên (giống để app mở trong lúc cron chạy)
+    await page.goto(BASE + "/");
+    const card = page.locator(`a[href="${ctgPath}"]`).first();
+    await card.waitFor();
+    await page.waitForLoadState("networkidle");
+    if ((await card.innerText()).includes("31.500")) throw new Error("giá CTG đã là 31.500 trước khi đổi");
+    // Tab B: đổi giá CTG (giống cron cập nhật giá trên server, tab A không biết)
+    const other = await ctx.newPage();
+    await other.goto(BASE + ctgPath);
+    await other.getByLabel("Giá hiện tại").fill("31500");
+    await other.getByLabel("Giá hiện tại").press("Enter");
+    await other.getByRole("status").filter({ hasText: /Đã cập nhật giá/ }).waitFor();
+    await other.close();
+    // Quay lại tab A: trang tự hỏi phiên bản giá và làm mới, không reload
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await page.waitForFunction(
+      (href) => [...document.querySelectorAll(`a[href="${href}"]`)].some((a) => a.textContent?.includes("31.500")),
+      ctgPath,
+      { timeout: 10_000 },
+    );
+  });
 } finally {
   await browser.close();
   cleanup();

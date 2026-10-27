@@ -75,6 +75,7 @@ Kế hoạch: 3 nấc DCA −10% (mua 1.000 / 1.000 / 1.500 cp), mẫu chốt l�
 | TC32 | Biểu đồ tổng quan | Ở `/`, đổi Giá / Tài sản / Theo mã, mở "Xem dạng bảng" | Có tiêu đề "Biểu đồ danh mục", chú thích có mã đang giữ và "Vốn đang rót"; bảng có dữ liệu; khung thời gian đúng 1D 1W 1M 3M 6M 1Y; 1D không có nến thì báo "Chưa có dữ liệu trong phiên" |
 | TC34 | Độ rộng trang | Màn 1440px, mở `/`, `/alerts`, `/settings`, `/positions/new` | Cả 4 trang rộng bằng nhau |
 | TC39 | Bỏ qua nấc DCA đang chạm | VNM 21.000 × 1.000, 3 nấc −10%; giá tay 18.900; bấm "Bỏ qua nấc này" ở nấc 1; giá tay 18.900 rồi 17.000 | Nấc 1 "giữ mốc 18.900"; nấc 2 vẫn ≤ 17.000 "so với mốc bỏ qua nấc 1"; ở 18.900 "Chưa chạm nấc nào"; ở 17.000 có 1 cảnh báo |
+| TC40 | Tổng quan tự cập nhật giá | Tab A mở `/` và để yên; tab B nhập giá tay CTG 31.500; quay lại tab A (không tải lại trang) | Thẻ CTG ở tab A tự hiện 31.500 trong vòng vài giây |
 
 ## Unit test bổ sung (`fees.test.ts`)
 
